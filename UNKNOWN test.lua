@@ -390,6 +390,7 @@ local function createFinder(D)
     local settings={}
     if type(readfile)=='function' then pcall(function() local data=Http:JSONDecode(readfile(settingsPath));if type(data)=='table' then settings=data end end) end
     local autoJoinMinValue=1e9
+    local autoJoinAttempted={}
     local autoJoinMinValueSettingKey='UNKNOWNAutoJoinMinValueV1'
     -- TeleportSetting is the freshest value across a server hop; local JSON may be stale.
     local teleportSavedAutoJoinValue
@@ -666,7 +667,7 @@ local function createFinder(D)
         rarityIndex=rarityIndex%#rarityOptions+1;minRank=rarityOptions[rarityIndex].rank
         rarity.Text=rarityButtonText()
         queryEpoch+=1;feed={};pageOffset=0;feedAt=-math.huge
-        autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false;autoJoinFeedAt=-math.huge
+        autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false;autoJoinAttempted={};autoJoinFeedAt=-math.huge
         saveSettings()
     end)
     local refreshButton=D.make('TextButton',{Text='REFRESH',Position=UDim2.fromOffset(10,54),Size=UDim2.new(1,-20,0,30),BackgroundColor3=Color3.fromRGB(115,215,45),BackgroundTransparency=0.15,TextColor3=Color3.new(1,1,1),TextSize=14},panel)
@@ -919,6 +920,7 @@ local function createFinder(D)
             minValueInput.Text=minValueInput.Text:match("^%s*(.-)%s*$")
             saveSettings()
             autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false
+            autoJoinAttempted={}
             autoJoinFeedAt=-math.huge
             queryStatus='Auto Join minimum set to '..minValueInput.Text
         else
@@ -951,6 +953,7 @@ local function createFinder(D)
         autoJoinEnabled=not autoJoinEnabled
         autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false
         if autoJoinEnabled then
+            autoJoinAttempted={}
             autoJoinFeed={};autoJoinFeedAt=-math.huge
         end
         paintAutoJoin()
@@ -1243,8 +1246,50 @@ local function createFinder(D)
         if not callOK then return false,tostring(success) end
         return success,message
     end
+    local function autoJoinEntryKey(entry)
+        return tostring(entry and entry.placeId or '')..':'..tostring(entry and entry.jobId or '')..':'..tostring(entry and entry.uid or '')
+    end
+    local function autoJoinWasAttempted(entry)
+        local key=autoJoinEntryKey(entry)
+        local untilAt=autoJoinAttempted[key]
+        if type(untilAt)=='number' and untilAt>os.clock() then return true end
+        autoJoinAttempted[key]=nil
+        return false
+    end
+    local function markAutoJoinAttempt(entry)
+        autoJoinAttempted[autoJoinEntryKey(entry)]=os.clock()+20
+    end
+    local function buildAutoJoinCandidates()
+        local now=(os.clock()+autoJoinClockOffset)*1000
+        local candidates={}
+        for _,entry in ipairs(autoJoinFeed) do
+            local rate=tonumber(entry.rate)
+            local rank=autoJoinRank(entry)
+            local job=type(entry.jobId)=='string' and entry.jobId or ''
+            local place=tonumber(entry.placeId)
+            local expiry=tonumber(entry.expiresAt)
+            local validEntry=job~='' and job~=game.JobId and place and place>0
+                and expiry and expiry>now and rate and rate>=autoJoinMinValue
+                and rank and rank>=minRank and entry.uid~=nil
+                and entry.full~=true and entry.unavailable~=true and entry.takenConfirmed~=true
+                and not autoJoinWasAttempted(entry)
+                and D.publicEntryAllowed(entry,now)
+            if validEntry then candidates[#candidates+1]=entry end
+        end
+        table.sort(candidates,function(a,b)
+            local ar,br=autoJoinRank(a) or 0,autoJoinRank(b) or 0
+            if ar~=br then return ar>br end
+            local av,bv=tonumber(a.rate) or 0,tonumber(b.rate) or 0
+            if av~=bv then return av>bv end
+            return tostring(a.jobId)<tostring(b.jobId)
+        end)
+        autoJoinCandidates=candidates
+        autoJoinCandidateIndex=1
+        autoJoinRetryRequested=false
+        return #candidates
+    end
     -- Auto Join ignores eggs in the current server and evaluates its private
-    -- Finder feed only. Reservation and teleport failures advance to the next candidate.
+    -- Finder feed only. It refreshes independently and cools down attempted targets.
     task.spawn(function()
         while active do
             if autoJoinEnabled and not autoJoinBusy and not joining then
@@ -1254,42 +1299,23 @@ local function createFinder(D)
                         queryStatus='Auto Join: waiting for Finder connection'
                         return
                     end
+                    if os.clock()-autoJoinFeedAt>6 then
+                        if os.clock()<autoJoinRefreshRetryAt then return end
+                        local refreshed,message=refreshAutoJoin()
+                        if not refreshed then
+                            autoJoinRefreshRetryAt=os.clock()+0.5
+                            queryStatus='Auto Join: '..tostring(message or 'feed refresh failed')
+                            return
+                        end
+                        buildAutoJoinCandidates()
+                    elseif #autoJoinCandidates==0 then
+                        buildAutoJoinCandidates()
+                    end
                     if #autoJoinCandidates==0 then
-                        if os.clock()-autoJoinFeedAt>6 then
-                            if os.clock()<autoJoinRefreshRetryAt then return end
-                            local refreshed,message=refreshAutoJoin()
-                            if not refreshed then
-                                autoJoinRefreshRetryAt=os.clock()+0.5
-                                queryStatus='Auto Join: '..tostring(message or 'feed refresh failed')
-                                return
-                            end
-                        end
-                        local now=(os.clock()+autoJoinClockOffset)*1000
-                        local candidates={}
-                        for _,entry in ipairs(autoJoinFeed) do
-                            local rate=tonumber(entry.rate)
-                            local rank=autoJoinRank(entry)
-                            local job=type(entry.jobId)=='string' and entry.jobId or ''
-                            local place=tonumber(entry.placeId)
-                            local expiry=tonumber(entry.expiresAt)
-                            local validEntry=job~='' and job~=game.JobId and place and place>0
-                                and expiry and expiry>now and rate and rate>=autoJoinMinValue
-                                and rank and rank>=minRank
-                                and entry.uid~=nil and entry.full~=true and entry.unavailable~=true
-                                and entry.takenConfirmed~=true
-                                and D.publicEntryAllowed(entry,now)
-                            if validEntry then candidates[#candidates+1]=entry end
-                        end
-                        table.sort(candidates,function(a,b)
-                            local ar,br=autoJoinRank(a) or 0,autoJoinRank(b) or 0
-                            if ar~=br then return ar>br end
-                            local av,bv=tonumber(a.rate) or 0,tonumber(b.rate) or 0
-                            if av~=bv then return av>bv end
-                            return tostring(a.jobId)<tostring(b.jobId)
-                        end)
-                        for i=1,#candidates do autoJoinCandidates[i]=candidates[i] end
-                        autoJoinCandidateIndex=1
-                        autoJoinRetryRequested=false
+                        queryStatus='Auto Join: no untried eligible servers; waiting for new reports'
+                        autoJoinFeedAt=os.clock()
+                        autoJoinRefreshRetryAt=os.clock()+6
+                        return
                     end
                     -- Instant Smart Auto Join: if a better eligible server appears in the live Finder feed,
                     -- rebuild the ranked candidates before reserving or teleporting to the older target.
@@ -1301,11 +1327,7 @@ local function createFinder(D)
                         local latestBestRank=currentRank
                         local nowLatest=(os.clock()+autoJoinClockOffset)*1000
                         local function alreadyAttempted(entry)
-                            for i=1,autoJoinCandidateIndex-1 do
-                                local prior=autoJoinCandidates[i]
-                                if prior and prior.jobId==entry.jobId and tostring(prior.uid)==tostring(entry.uid) then return true end
-                            end
-                            return false
+                            return autoJoinWasAttempted(entry)
                         end
                         for _,entry in ipairs(autoJoinFeed) do
                             local rate=tonumber(entry.rate)
@@ -1365,6 +1387,7 @@ local function createFinder(D)
                         return
                     end
                     queryStatus='Auto Join: trying #'..tostring(autoJoinCandidateIndex)..' '..tostring(target.name)..' ('..tostring(target.rate)..'/s)'
+                    markAutoJoinAttempt(target)
                     local claim,claimError=network(config.endpoint..'/v1/join','POST',
                         Http:JSONEncode({placeId=target.placeId,jobId=target.jobId,uid=target.uid,reporterId=reporterId,userId=D.player.UserId}),
                         headers())
@@ -1374,13 +1397,12 @@ local function createFinder(D)
                         end
                         autoJoinCandidateIndex+=1
                         autoJoinRetryRequested=true
-                        autoJoinFeedAt=0
                         queryStatus='Auto Join: server #'..tostring(autoJoinCandidateIndex-1)..' unavailable; trying next'
                         return
                     end
                     local joinExpiry=math.min(tonumber(target.expiresAt) or math.huge,tonumber(claim.expiresAt) or math.huge)
                     if now>=joinExpiry then
-                        autoJoinCandidateIndex+=1;autoJoinRetryRequested=true;autoJoinFeedAt=0
+                        autoJoinCandidateIndex+=1;autoJoinRetryRequested=true
                         queryStatus='Auto Join: report expired; trying next server'
                         return
                     end
