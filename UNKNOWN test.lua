@@ -1139,16 +1139,6 @@ local function createFinder(D)
         page.Text='TOP '..tostring(#feed)
         return true
     end
-    local function localBestAutoJoinRate()
-        local best=0
-        if not D.ready() then return best end
-        for _,egg in ipairs(snapshot()) do
-            local rate=tonumber(egg.rate) or 0
-            local rank=tonumber(egg.rank) or 0
-            if rate>=autoJoinMinValue and rank>=minRank and rate>best then best=rate end
-        end
-        return best
-    end
     -- Auto Join ignores eggs in the current server and evaluates remote Finder results only.
     -- Reservation failures and asynchronous teleport failures advance to the next candidate.
     task.spawn(function()
