@@ -358,7 +358,7 @@ local function createFinder(D)
     local localStates={}
     local reportStatus='Connecting'
     local queryStatus=''
-    local minRate,minRank=1e9,6
+    local minRate,minRank=1e9,7
     local serversMinValue=1e9
     local joining=false
     local joinedEggSettingKey='UNKNOWNJoinedEggV1'
@@ -1177,7 +1177,7 @@ local function createFinder(D)
         autoJoinRefreshBusy=true
         local callOK,success,message=pcall(function()
             local baseQuery='?localJob='..Http:UrlEncode(game.JobId)..'&placeId='..game.PlaceId
-                ..'&limit=10&tier=public&minRate='..tostring(autoJoinMinValue)..'&minRank='..tostring(minRank)
+                ..'&limit=10&tier=public&minRate='..tostring(autoJoinMinValue)..'&minRank=7'
             local requestedCycle=cycleInfo()
             if requestedCycle then
                 baseQuery=baseQuery..'&cycleRemainingMs='..tostring(math.max(0,requestedCycle.remaining*1000))
