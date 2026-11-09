@@ -2426,10 +2426,10 @@ local function createFinder(D)
                     reportStatus=message
                     if not success then warn('Tenshi broadcast: '..tostring(message)) end
                 end
-                if os.clock()-feedAt>=0.25 then local success,message=refresh(autoJoinEnabled); if not success then queryStatus='Finder: '..tostring(message) end end
+                if os.clock()-feedAt>=0.01 then local success,message=refresh(autoJoinEnabled); if not success then queryStatus='Finder: '..tostring(message) end end
             end)
             if not ok then reportStatus='BCAST: '..tostring(err);queryStatus=tostring(err);warn('Tenshi broadcast: '..tostring(err)) end
-            task.wait(0.25)
+            task.wait(0.01)
         end
     end)
     task.spawn(function()
