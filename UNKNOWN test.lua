@@ -843,7 +843,7 @@ local function createFinder(D)
             done=true; if networkTicket==ticket then networkBusy=false end
         end)
         local deadline=os.clock()+12
-        while active and not done and os.clock()<deadline do task.wait(0.05) end
+        while active and not done and os.clock()<deadline do task.wait(0.01) end
         if not done then
             if networkTicket==ticket then networkTicket+=1;networkBusy=false end
             pcall(task.cancel,worker)
@@ -1182,6 +1182,48 @@ local function createFinder(D)
                         autoJoinCandidateIndex=1
                         autoJoinRetryRequested=false
                     end
+                    -- Instant Smart Auto Join: if a better eligible server appears in the live Finder feed,
+                    -- rebuild the ranked candidates before reserving or teleporting to the older target.
+                    if #autoJoinCandidates>0 and autoJoinCandidateIndex<=#autoJoinCandidates then
+                        local currentTarget=autoJoinCandidates[autoJoinCandidateIndex]
+                        local currentRate=tonumber(currentTarget and currentTarget.rate) or 0
+                        local latestBestRate=currentRate
+                        local nowLatest=(os.clock()+clockOffset)*1000
+                        for _,entry in ipairs(feed) do
+                            local rate=tonumber(entry.rate)
+                            local job=type(entry.jobId)=='string' and entry.jobId or ''
+                            local place=tonumber(entry.placeId)
+                            local expiry=tonumber(entry.expiresAt)
+                            local eligible=job~='' and job~=game.JobId and place and place>0
+                                and expiry and expiry>nowLatest and rate and rate>=autoJoinMinValue
+                                and entry.uid~=nil and entry.full~=true and entry.unavailable~=true
+                                and entry.takenConfirmed~=true and D.publicEntryAllowed(entry,nowLatest)
+                            if eligible and rate>latestBestRate then latestBestRate=rate end
+                        end
+                        if latestBestRate>currentRate then
+                            local refreshedCandidates={}
+                            for _,entry in ipairs(feed) do
+                                local rate=tonumber(entry.rate)
+                                local job=type(entry.jobId)=='string' and entry.jobId or ''
+                                local place=tonumber(entry.placeId)
+                                local expiry=tonumber(entry.expiresAt)
+                                local eligible=job~='' and job~=game.JobId and place and place>0
+                                    and expiry and expiry>nowLatest and rate and rate>0
+                                    and entry.uid~=nil and entry.full~=true and entry.unavailable~=true
+                                    and entry.takenConfirmed~=true and rate>=autoJoinMinValue
+                                    and D.publicEntryAllowed(entry,nowLatest)
+                                if eligible then refreshedCandidates[#refreshedCandidates+1]=entry end
+                            end
+                            table.sort(refreshedCandidates,function(a,b)
+                                local ar,br=tonumber(a.rate) or 0,tonumber(b.rate) or 0
+                                if ar~=br then return ar>br end
+                                return tostring(a.jobId)<tostring(b.jobId)
+                            end)
+                            autoJoinCandidates=refreshedCandidates
+                            autoJoinCandidateIndex=1
+                            autoJoinRetryRequested=false
+                        end
+                    end
                     if autoJoinCandidateIndex>#autoJoinCandidates then
                         queryStatus='Auto Join: all available candidates failed'
                         autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false
@@ -1241,7 +1283,7 @@ local function createFinder(D)
                 end
                 autoJoinBusy=false
             end
-            task.wait(0.1)
+            task.wait(0.01)
         end
     end)
 
