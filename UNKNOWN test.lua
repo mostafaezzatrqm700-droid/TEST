@@ -1175,6 +1175,7 @@ local function createFinder(D)
         if networkBusy then return false,'Waiting for Finder network slot' end
         if not config then return false,'Finder not connected' end
         autoJoinRefreshBusy=true
+        queryStatus='Auto Join: FETCHING REPORTS'
         local callOK,success,message=pcall(function()
             local baseQuery='?localJob='..Http:UrlEncode(game.JobId)..'&placeId='..game.PlaceId
                 ..'&limit=10&tier=public&minRate='..tostring(autoJoinMinValue)..'&minRank=7'
@@ -1190,6 +1191,7 @@ local function createFinder(D)
             local serverTime=nil
             while pageCount<maxPages do
                 local query=baseQuery..'&offset='..tostring(offset)
+                queryStatus='Auto Join: FETCHING REPORTS (page '..tostring(pageCount+1)..')'
                 local data,err=network(config.endpoint..'/v1/eggs'..query,'GET',nil,headers())
                 if not data or type(data.items)~='table' then
                     if pageCount==0 then return false,err or 'Invalid Auto Join feed' end
@@ -1233,6 +1235,7 @@ local function createFinder(D)
                 offset=following
                 task.wait(0.08)
             end
+            queryStatus='Auto Join: FILTERING SERVERS'
             table.sort(results,function(a,b)
                 local ar,br=autoJoinRank(a) or 0,autoJoinRank(b) or 0
                 if ar~=br then return ar>br end
@@ -1298,6 +1301,7 @@ local function createFinder(D)
         while active do
             if autoJoinEnabled and not autoJoinBusy and not joining then
                 autoJoinBusy=true
+                queryStatus='Auto Join: STARTING'
                 local ok,err=pcall(function()
                     if not config then
                         queryStatus='Auto Join: waiting for Finder connection'
@@ -1392,6 +1396,7 @@ local function createFinder(D)
                     end
                     queryStatus='Auto Join: trying #'..tostring(autoJoinCandidateIndex)..' '..tostring(target.name)..' ('..tostring(target.rate)..'/s)'
                     markAutoJoinAttempt(target)
+                    queryStatus='Auto Join: REQUESTING JOIN'
                     local claim,claimError=network(config.endpoint..'/v1/join','POST',
                         Http:JSONEncode({placeId=target.placeId,jobId=target.jobId,uid=target.uid,reporterId=reporterId,userId=D.player.UserId}),
                         headers())
@@ -1411,7 +1416,7 @@ local function createFinder(D)
                         return
                     end
                     joining=true
-                    queryStatus='Auto Join: joining server #'..tostring(autoJoinCandidateIndex)
+                    queryStatus='Auto Join: TELEPORTING TO SERVER #'..tostring(autoJoinCandidateIndex)
                     queueAutoExecute()
                     D.saveGuiBeforeTeleport()
                     D.stopFarm()
