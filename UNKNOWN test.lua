@@ -665,7 +665,9 @@ local function createFinder(D)
     rarity.Activated:Connect(function()
         rarityIndex=rarityIndex%#rarityOptions+1;minRank=rarityOptions[rarityIndex].rank
         rarity.Text=rarityButtonText()
-        queryEpoch+=1;feed={};pageOffset=0;feedAt=-math.huge;saveSettings()
+        queryEpoch+=1;feed={};pageOffset=0;feedAt=-math.huge
+        autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false;autoJoinFeedAt=-math.huge
+        saveSettings()
     end)
     local refreshButton=D.make('TextButton',{Text='REFRESH',Position=UDim2.fromOffset(10,54),Size=UDim2.new(1,-20,0,30),BackgroundColor3=Color3.fromRGB(115,215,45),BackgroundTransparency=0.15,TextColor3=Color3.new(1,1,1),TextSize=14},panel)
     local resetTimer=D.label(refreshButton,'RESET --:--',UDim2.fromOffset(8,0),UDim2.new(0.28,-8,1,0),Color3.fromRGB(230,245,255),13)
@@ -924,7 +926,7 @@ local function createFinder(D)
             queryStatus='Enter a value from 1B to 50B (example: 1.5B)'
         end
     end)
-    -- Beast Auto Join: selects the highest-income valid egg from the shared Finder feed.
+    -- Beast Auto Join: selects the best eligible egg from its private Finder API feed.
     local autoJoinEnabled=false
     local autoJoinBusy=false
     local autoJoinCandidates={}
@@ -935,6 +937,7 @@ local function createFinder(D)
     local autoJoinFeedAt=-math.huge
     local autoJoinClockOffset=0
     local autoJoinRefreshBusy=false
+    local autoJoinRefreshRetryAt=0
     local autoJoinButton=D.make('TextButton',{Name='AutoJoin',Text='AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-52),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(200,45,45),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
     D.make('UICorner',{CornerRadius=UDim.new(0,6)},autoJoinButton)
     autoJoinButton.TextScaled=true;autoJoinButton.TextWrapped=false
@@ -1232,6 +1235,7 @@ local function createFinder(D)
             end)
             autoJoinFeed=results
             autoJoinFeedAt=os.clock()
+            autoJoinRefreshRetryAt=0
             queryStatus='Auto Join: updated '..tostring(#results)..' eligible reports from '..tostring(pageCount)..' pages'
             return true
         end)
@@ -1252,8 +1256,10 @@ local function createFinder(D)
                     end
                     if #autoJoinCandidates==0 then
                         if os.clock()-autoJoinFeedAt>6 then
+                            if os.clock()<autoJoinRefreshRetryAt then return end
                             local refreshed,message=refreshAutoJoin()
                             if not refreshed then
+                                autoJoinRefreshRetryAt=os.clock()+0.5
                                 queryStatus='Auto Join: '..tostring(message or 'feed refresh failed')
                                 return
                             end
