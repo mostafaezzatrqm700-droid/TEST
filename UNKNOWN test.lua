@@ -391,6 +391,16 @@ local function createFinder(D)
     if type(readfile)=='function' then pcall(function() local data=Http:JSONDecode(readfile(settingsPath));if type(data)=='table' then settings=data end end) end
     local autoJoinMinValue=1e9
     local autoJoinAttempted={}
+    local autoJoinEnabled=false
+    local autoJoinBusy=false
+    local autoJoinCandidates={}
+    local autoJoinCandidateIndex=1
+    local autoJoinRetryRequested=false
+    local autoJoinFeed={}
+    local autoJoinFeedAt=-math.huge
+    local autoJoinClockOffset=0
+    local autoJoinRefreshBusy=false
+    local autoJoinRefreshRetryAt=0
     local autoJoinMinValueSettingKey='UNKNOWNAutoJoinMinValueV1'
     -- TeleportSetting is the freshest value across a server hop; local JSON may be stale.
     local teleportSavedAutoJoinValue
@@ -929,17 +939,9 @@ local function createFinder(D)
         end
     end)
     -- Beast Auto Join: selects the best eligible egg from its private Finder API feed.
-    local autoJoinEnabled=false
-    local autoJoinBusy=false
-    local autoJoinCandidates={}
-    local autoJoinCandidateIndex=1
-    local autoJoinRetryRequested=false
+    -- Auto Join state is declared above the settings callbacks so every callback
+    -- updates the same local engine state rather than accidentally creating globals.
     -- Auto Join owns a private Finder feed; it never reads the UI feed.
-    local autoJoinFeed={}
-    local autoJoinFeedAt=-math.huge
-    local autoJoinClockOffset=0
-    local autoJoinRefreshBusy=false
-    local autoJoinRefreshRetryAt=0
     local autoJoinButton=D.make('TextButton',{Name='AutoJoin',Text='AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-52),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(200,45,45),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
     D.make('UICorner',{CornerRadius=UDim.new(0,6)},autoJoinButton)
     autoJoinButton.TextScaled=true;autoJoinButton.TextWrapped=false
