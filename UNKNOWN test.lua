@@ -843,7 +843,7 @@ local function createFinder(D)
             done=true; if networkTicket==ticket then networkBusy=false end
         end)
         local deadline=os.clock()+12
-        while active and not done and os.clock()<deadline do task.wait(0.1) end
+        while active and not done and os.clock()<deadline do task.wait(0.05) end
         if not done then
             if networkTicket==ticket then networkTicket+=1;networkBusy=false end
             pcall(task.cancel,worker)
@@ -1116,7 +1116,7 @@ local function createFinder(D)
             nextOffset=following
             if following==offset then break end
             offset=following
-            task.wait(0.12)
+            task.wait(0.08)
         end
 
         if epoch~=queryEpoch then return true end
@@ -1265,7 +1265,7 @@ local function createFinder(D)
                 end
                 autoJoinBusy=false
             end
-            task.wait(0.25)
+            task.wait(0.1)
         end
     end)
 
@@ -2426,10 +2426,10 @@ local function createFinder(D)
                     reportStatus=message
                     if not success then warn('Tenshi broadcast: '..tostring(message)) end
                 end
-                if os.clock()-feedAt>=0.5 then local success,message=refresh(autoJoinEnabled); if not success then queryStatus='Finder: '..tostring(message) end end
+                if os.clock()-feedAt>=0.25 then local success,message=refresh(autoJoinEnabled); if not success then queryStatus='Finder: '..tostring(message) end end
             end)
             if not ok then reportStatus='BCAST: '..tostring(err);queryStatus=tostring(err);warn('Tenshi broadcast: '..tostring(err)) end
-            task.wait(0.5)
+            task.wait(0.25)
         end
     end)
     task.spawn(function()
