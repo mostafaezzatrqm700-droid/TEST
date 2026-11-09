@@ -406,8 +406,7 @@ local function createFinder(D)
     if type(settings.serversMinValue)=='number' and settings.serversMinValue>=1e9 and settings.serversMinValue<=50e9 then serversMinValue=settings.serversMinValue end
     if type(settings.minRank)=='number' then
         local saved=math.floor(settings.minRank)
-        if saved>=6 and saved<=10 then minRank=saved
-        elseif saved==0 and settings.rarityMenu=='mythic-up-v1' then minRank=0 end
+        if saved>=7 and saved<=10 then minRank=saved else minRank=7 end
     end
     local menuHotkey=Enum.KeyCode.F
     local sharingNotice=D.label(D.gui,'EGG FINDER ON â¢ Sharing egg sightings & server ID',UDim2.new(0,12,1,-28),UDim2.new(1,-24,0,22),Color3.fromRGB(245,245,245),12)
@@ -653,12 +652,12 @@ local function createFinder(D)
     scope.Activated:Connect(function() setScope(false) end)
     myScope.Activated:Connect(function() setScope(true) end)
     styleScope()
-    local rarityOptions={{name='Mythic',rank=6},{name='Cosmic',rank=7},{name='Secret',rank=8},{name='Eternal',rank=9},{name='Divine',rank=10},{name='Any',rank=0}}
-    local rarityIndex=#rarityOptions
-    minRank=0
+    local rarityOptions={{name='Cosmic',rank=7},{name='Secret',rank=8},{name='Eternal',rank=9},{name='Divine',rank=10}}
+    local rarityIndex=1
+    minRank=7
     local function rarityButtonText()
         local name=rarityOptions[rarityIndex].name
-        local colors={Mythic='#FF4B55',Cosmic='#BE55FF',Secret='#FFFFFF',Eternal='#DACAEC',Divine='#FFCD37',Any='#FFFFFF'}
+        local colors={Cosmic='#BE55FF',Secret='#FFFFFF',Eternal='#DACAEC',Divine='#FFCD37'}
         return 'MIN RARITY: <font color="'..colors[name]..'">'..name..'</font>'
     end
     local rarity=D.make('TextButton',{Text=rarityButtonText(),RichText=true,Position=UDim2.new(0,10,1,-96),Size=UDim2.new(0.60,-15,0,36),BackgroundColor3=Color3.fromRGB(45,90,175),TextColor3=Color3.new(1,1,1),TextSize=12},panel)
@@ -1298,9 +1297,6 @@ local function createFinder(D)
     local rarityColors={
         divine=Color3.fromRGB(255,205,55),eternal=Color3.fromRGB(218,202,236),
         secret=Color3.fromRGB(255,255,255),cosmic=Color3.fromRGB(190,85,255),
-        mythic=Color3.fromRGB(255,75,85),legendary=Color3.fromRGB(255,155,45),
-        epic=Color3.fromRGB(255,110,200),rare=Color3.fromRGB(65,165,255),
-        uncommon=Color3.fromRGB(105,220,120),common=Color3.fromRGB(220,225,235)
     }
     local function weightPresentation(entry)
         local isKg=type(entry.weight)=='number'
