@@ -289,7 +289,7 @@ local function createFinder(D)
         if rank~=1 then return true end
         local first=D.publicPrioritySeen[entry.key]
         if not first then first=os.clock();D.publicPrioritySeen[entry.key]=first end
-        return os.clock()-first>=5
+        return os.clock()-first>=0.1
     end
     D.publicSightings={}
     D.publicSightingsDirty=false
@@ -851,10 +851,10 @@ local function createFinder(D)
         local ticket=networkTicket
         local done,result=false,nil
         local worker=task.spawn(function()
-            result=table.pack(pcall(requestFn,{Url=url,Method=method,Headers=headers or {},Body=body,Timeout=10}))
+            result=table.pack(pcall(requestFn,{Url=url,Method=method,Headers=headers or {},Body=body,Timeout=5}))
             done=true; if networkTicket==ticket then networkBusy=false end
         end)
-        local deadline=os.clock()+12
+        local deadline=os.clock()+5
         while active and not done and os.clock()<deadline do task.wait(0.01) end
         if not done then
             if networkTicket==ticket then networkTicket+=1;networkBusy=false end
@@ -972,7 +972,7 @@ local function createFinder(D)
         local ticket=featureTicket
         local worker=task.spawn(function()
             local ok,response=pcall(function()
-                return requestFn({Url=endpoint..'/v1/report',Method='POST',Timeout=6,
+                return requestFn({Url=endpoint..'/v1/report',Method='POST',Timeout=5,
                     Headers={['Content-Type']='application/json',['X-NYX-Room']=key},Body=Http:JSONEncode(payload)})
             end)
             if featureTicket~=ticket then return end
@@ -1016,7 +1016,7 @@ local function createFinder(D)
         return true
     end
     local function headers() return {['Content-Type']='application/json',['X-NYX-Room']=config.roomKey} end
-    local broadcastInterval=5
+    local broadcastInterval=0.1
     local function snapshot()
         local eggs={}
         for _,entry in ipairs(D.entries()) do
@@ -1261,7 +1261,7 @@ local function createFinder(D)
         return false
     end
     local function markAutoJoinAttempt(entry)
-        autoJoinAttempted[autoJoinEntryKey(entry)]=os.clock()+20
+        autoJoinAttempted[autoJoinEntryKey(entry)]=os.clock()+3
     end
     local function buildAutoJoinCandidates()
         local now=(os.clock()+autoJoinClockOffset)*1000
@@ -1303,11 +1303,11 @@ local function createFinder(D)
                         queryStatus='Auto Join: waiting for Finder connection'
                         return
                     end
-                    if os.clock()-autoJoinFeedAt>6 then
+                    if os.clock()-autoJoinFeedAt>0.1 then
                         if os.clock()<autoJoinRefreshRetryAt then return end
                         local refreshed,message=refreshAutoJoin()
                         if not refreshed then
-                            autoJoinRefreshRetryAt=os.clock()+0.5
+                            autoJoinRefreshRetryAt=os.clock()+0.1
                             queryStatus='Auto Join: '..tostring(message or 'feed refresh failed')
                             return
                         end
@@ -2361,7 +2361,7 @@ local function createFinder(D)
                 rememberJoinedEgg(entry)
                 local ok,err=pcall(function() Teleports:TeleportToPlaceInstance(entry.placeId,entry.jobId,D.player) end)
                 if not ok then queryStatus='Join failed: '..tostring(err); joining=false;joiningKey=nil end
-                task.delay(12,function() joining=false;joiningKey=nil end)
+                task.delay(5,function() joining=false;joiningKey=nil end)
             end)
             end
             card.entry=entry
@@ -2624,18 +2624,8 @@ end
 
 
 local function run()
-    local EggState=module('Client.EggState')
-    local Assets=module('Data.Assets')
-    local States=module('Shared.Types.AreaEggs').States
-    local mutations,eggRecords
-    pcall(function() mutations=module('Shared.Modules.Mutations') end)
-    pcall(function() eggRecords=module('Shared.Util.EggRecords') end)
-    assert(type(EggState.ReadFieldEggs)=='function','ReadFieldEggs unavailable')
-    assert(type(Assets.Directory)=='table' and States and States.Slot~=nil,'Game schema changed')
-    local latestEntries={}
-    local latestMetadata=nil
-    local scanCycle
-    pcall(function() scanCycle=module('Shared.Util.AreaEggCycle') end)
+    -- Local MY SERVER egg scanning is intentionally disabled.
+    -- Finder UI and Auto Join continue using the remote public Finder feed.
     local function parseValue(text)
         local amount,suffix=tostring(text):gsub(',',''):match('^%s*%$?%s*(%d+%.?%d*)%s*(%a*)%s*$')
         local powers={['']=1,k=1e3,m=1e6,b=1e9,t=1e12,qa=1e15,qi=1e18}
@@ -2644,59 +2634,14 @@ local function run()
         local value=tonumber(amount)*factor
         return valid(value) and value or nil
     end
-    local lastScan=0
-    createFinder({gui=gui,localPanel={Visible=false},player=player,make=make,label=label,entries=function() return os.clock()-lastScan<10 and latestEntries or {} end,metadata=function() return latestMetadata end,ready=function() return lastScan>0 and os.clock()-lastScan<10 end,parseValue=parseValue,money=money,stopFarm=function() end})
-    local notified={}
-    while alive do
-        local ok,err=pcall(function()
-            local scanStartedClock=os.clock()
-            local snapshot=EggState.ReadFieldEggs()
-            assert(type(snapshot)=='table' and type(snapshot.Records)=='table','Field snapshot unavailable')
-            local eggs,seen={},{}
-            local fieldCount,missingIncome=0,0
-            local fieldStates={}
-            local scanAt=workspace:GetServerTimeNow()*1000
-            local resetAt
-            if scanCycle then pcall(function() if scanCycle.IsRunning() then resetAt=scanCycle.NextResetTime(scanAt/1000)*1000 end end) end
-            for recordKey,record in pairs(snapshot.Records) do
-                fieldStates[#fieldStates+1]={uid=tostring(record.Uid or recordKey),state=record.State}
-                if record.State==States.Slot or record.State==States.Carried or record.State==States.Dropped or record.State==States.GuardCarried then
-                    local asset=Assets.Directory[record.AssetCategory] or {}
-                    local rarity=asset.Rarity or {}
-                    local uid=record.Uid or recordKey
-                    local model=modelFor(uid)
-                    local scale=numberField(record,{'AssetScale'})
-                    local weight
-                    if eggRecords and type(eggRecords.WeightKg)=='function' then
-                        local good,result=pcall(eggRecords.WeightKg,record)
-                        if good and valid(result) then weight=result end
-                    end
-                    local rate=displayedRate(model)
-                    local estimated=false
-                    if not rate then
-                        rate=computedRate(asset.EarningRate,scale,record.Mutations or {},mutations)
-                        estimated=rate~=nil
-                    end
-                    fieldCount=fieldCount+1
-                    seen[tostring(uid)]=true
-                    local traits,traitsKnown=readTraitNames(record)
-                    table.insert(eggs,{key='field:'..tostring(uid),uid=uid,traitsKnown=traitsKnown,category=record.AssetCategory,areaKey=record.AreaId,worldPos=typeof(record.BottomCFrame)=='CFrame' and record.BottomCFrame.Position or nil,area=tostring(record.AreaId)..' | Mut: '..(#traits>0 and table.concat(traits,', ') or traitsKnown and 'None' or 'UNKNOWN'),model=model,icon=asset.Icon,name=asset.DisplayName or record.AssetCategory or 'Unknown',rarity=rarity.DisplayName or rarity._id or 'Unknown',tier=tonumber(rarity.Rank) or 0,color=typeof(rarity.Color)=='Color3' and rarity.Color or Color3.new(1,1,1),scale=scale,weight=weight,rate=rate,estimated=estimated})
-                end
-            end
-            -- One numeric value drives both display and ordering.
-            for _,entry in ipairs(eggs) do
-                entry.rate=entry.rate or entry.unmutatedRate
-            end
-            for _,entry in ipairs(eggs) do
-                entry.mutationText=tostring(entry.area or ''):match('Mut:%s*(.*)') or ''
-            end
-            latestEntries=eggs
-            latestMetadata={states=fieldStates,resetAt=resetAt,scanAt=scanAt,scanClock=scanStartedClock}
-            lastScan=os.clock()
-        end)
-        if not ok then warn('NYX Finder scan:',err) end
-        task.wait(1)
-    end
+    createFinder({
+        gui=gui,localPanel={Visible=false},player=player,make=make,label=label,
+        entries=function() return {} end,
+        metadata=function() return nil end,
+        ready=function() return false end,
+        parseValue=parseValue,money=money,stopFarm=function() end
+    })
+    while alive do task.wait(1) end
 end
  task.spawn(function()
     local ok,err=pcall(run)
