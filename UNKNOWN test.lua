@@ -1156,8 +1156,10 @@ local function createFinder(D)
     -- ALL SERVERS / MY SERVER feed is never read by the join engine.
     local function autoJoinRank(entry)
         if type(entry)~='table' then return nil end
-        local rank=tonumber(entry.rank or entry.tier or entry.localTier)
-        if not rank then
+        local rank=tonumber(entry.rank)
+        if not rank or rank<7 or rank>10 then rank=tonumber(entry.tier) end
+        if not rank or rank<7 or rank>10 then rank=tonumber(entry.localTier) end
+        if not rank or rank<7 or rank>10 then
             local rarity=type(entry.rarity)=='string' and entry.rarity:lower() or ''
             local ranks={cosmic=7,secret=8,eternal=9,divine=10}
             rank=ranks[rarity]
