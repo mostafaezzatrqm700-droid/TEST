@@ -289,7 +289,7 @@ local function createFinder(D)
         if rank~=1 then return true end
         local first=D.publicPrioritySeen[entry.key]
         if not first then first=os.clock();D.publicPrioritySeen[entry.key]=first end
-        return os.clock()-first>=0.1
+        return os.clock()-first>=5
     end
     D.publicSightings={}
     D.publicSightingsDirty=false
@@ -851,10 +851,10 @@ local function createFinder(D)
         local ticket=networkTicket
         local done,result=false,nil
         local worker=task.spawn(function()
-            result=table.pack(pcall(requestFn,{Url=url,Method=method,Headers=headers or {},Body=body,Timeout=5}))
+            result=table.pack(pcall(requestFn,{Url=url,Method=method,Headers=headers or {},Body=body,Timeout=10}))
             done=true; if networkTicket==ticket then networkBusy=false end
         end)
-        local deadline=os.clock()+5
+        local deadline=os.clock()+12
         while active and not done and os.clock()<deadline do task.wait(0.01) end
         if not done then
             if networkTicket==ticket then networkTicket+=1;networkBusy=false end
@@ -972,7 +972,7 @@ local function createFinder(D)
         local ticket=featureTicket
         local worker=task.spawn(function()
             local ok,response=pcall(function()
-                return requestFn({Url=endpoint..'/v1/report',Method='POST',Timeout=5,
+                return requestFn({Url=endpoint..'/v1/report',Method='POST',Timeout=6,
                     Headers={['Content-Type']='application/json',['X-NYX-Room']=key},Body=Http:JSONEncode(payload)})
             end)
             if featureTicket~=ticket then return end
@@ -1016,7 +1016,7 @@ local function createFinder(D)
         return true
     end
     local function headers() return {['Content-Type']='application/json',['X-NYX-Room']=config.roomKey} end
-    local broadcastInterval=0.1
+    local broadcastInterval=5
     local function snapshot()
         local eggs={}
         for _,entry in ipairs(D.entries()) do
@@ -1261,7 +1261,7 @@ local function createFinder(D)
         return false
     end
     local function markAutoJoinAttempt(entry)
-        autoJoinAttempted[autoJoinEntryKey(entry)]=os.clock()+3
+        autoJoinAttempted[autoJoinEntryKey(entry)]=os.clock()+20
     end
     local function buildAutoJoinCandidates()
         local now=(os.clock()+autoJoinClockOffset)*1000
@@ -1303,11 +1303,11 @@ local function createFinder(D)
                         queryStatus='Auto Join: waiting for Finder connection'
                         return
                     end
-                    if os.clock()-autoJoinFeedAt>0.1 then
+                    if os.clock()-autoJoinFeedAt>6 then
                         if os.clock()<autoJoinRefreshRetryAt then return end
                         local refreshed,message=refreshAutoJoin()
                         if not refreshed then
-                            autoJoinRefreshRetryAt=os.clock()+0.1
+                            autoJoinRefreshRetryAt=os.clock()+0.5
                             queryStatus='Auto Join: '..tostring(message or 'feed refresh failed')
                             return
                         end
@@ -2361,7 +2361,7 @@ local function createFinder(D)
                 rememberJoinedEgg(entry)
                 local ok,err=pcall(function() Teleports:TeleportToPlaceInstance(entry.placeId,entry.jobId,D.player) end)
                 if not ok then queryStatus='Join failed: '..tostring(err); joining=false;joiningKey=nil end
-                task.delay(5,function() joining=false;joiningKey=nil end)
+                task.delay(12,function() joining=false;joiningKey=nil end)
             end)
             end
             card.entry=entry
