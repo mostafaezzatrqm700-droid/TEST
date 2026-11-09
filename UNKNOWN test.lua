@@ -1149,8 +1149,7 @@ local function createFinder(D)
         end
         return best
     end
-    -- Auto Join compares the best eligible local egg against every public server.
-    -- It stays local on ties and only teleports when a strictly better remote egg exists.
+    -- Auto Join ignores eggs in the current server and evaluates remote Finder results only.
     -- Reservation failures and asynchronous teleport failures advance to the next candidate.
     task.spawn(function()
         while active do
@@ -1189,13 +1188,6 @@ local function createFinder(D)
                             if ar~=br then return ar>br end
                             return tostring(a.jobId)<tostring(b.jobId)
                         end)
-                        local localBest=localBestAutoJoinRate()
-                        local remoteBest=#candidates>0 and (tonumber(candidates[1].rate) or 0) or 0
-                        if localBest>0 and localBest>=remoteBest then
-                            autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false
-                            queryStatus='Auto Join: best eligible egg is already in this server'
-                            return
-                        end
                         for i=1,#candidates do autoJoinCandidates[i]=candidates[i] end
                         autoJoinCandidateIndex=1
                         autoJoinRetryRequested=false
@@ -1207,12 +1199,6 @@ local function createFinder(D)
                         return
                     end
                     local target=autoJoinCandidates[autoJoinCandidateIndex]
-                    local localBest=localBestAutoJoinRate()
-                    if localBest>0 and localBest>=(tonumber(target and target.rate) or 0) then
-                        autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false
-                        queryStatus='Auto Join: best eligible egg is already in this server'
-                        return
-                    end
                     local now=(os.clock()+clockOffset)*1000
                     if not target or tonumber(target.expiresAt or 0)<=now then
                         autoJoinCandidateIndex+=1
