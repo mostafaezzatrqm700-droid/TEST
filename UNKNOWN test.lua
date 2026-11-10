@@ -1097,7 +1097,7 @@ local function createFinder(D)
     D.flushReport=report
     local function refresh(forceAllServers)
         local epoch=queryEpoch
-        local baseQuery='?localJob='..Http:UrlEncode(game.JobId)..'&placeId='..game.PlaceId..'&limit=30&tier=public&minRate='..tostring(minRate)..'&minRank='..tostring(minRank)
+        local baseQuery='?localJob='..Http:UrlEncode(game.JobId)..'&placeId='..game.PlaceId..'&limit=10&tier=public&minRate='..tostring(minRate)..'&minRank='..tostring(minRank)
         local requestedCycle=cycleInfo()
         if requestedCycle then baseQuery=baseQuery..'&cycleRemainingMs='..tostring(math.max(0,requestedCycle.remaining*1000))..'&cycleId='..tostring(requestedCycle.resetAt) end
         if othersOnly and not forceAllServers then baseQuery=baseQuery..'&onlyJob='..Http:UrlEncode(game.JobId) end
@@ -1185,7 +1185,7 @@ local function createFinder(D)
         if not config then return false,'Finder connection unavailable' end
         local refreshStartedAt=os.clock()
         local baseQuery='?localJob='..Http:UrlEncode(game.JobId)..'&placeId='..game.PlaceId
-            ..'&limit=10&tier=public&minRate='..tostring(minRate)
+            ..'&limit=30&tier=public&minRate='..tostring(minRate)
             ..'&minRank='..tostring(AUTO_JOIN_MIN_RANK)
         local allItems,seenItems={},{}
         clearAutoJoinApiLog()
