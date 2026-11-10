@@ -2191,7 +2191,7 @@ local function createFinder(D)
                 end
             end
             table.sort(source,function(a,b) if othersOnly and a.trackedTaken~=b.trackedTaken then return a.trackedTaken==true end; if a.rate~=b.rate then return a.rate>b.rate end; return a.key<b.key end)
-            local limit=8
+            local limit=10
             while #source>limit do source[#source]=nil end
             for i,e in ipairs(source) do e.displayRank=i end
         for priorityRank,entry in ipairs(source) do
