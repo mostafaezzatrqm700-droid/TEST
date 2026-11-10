@@ -924,27 +924,30 @@ local function createFinder(D)
             queryStatus='Enter a value from 1B to 50B (example: 1.5B)'
         end
     end)
-    -- Beast Auto Join: selects the highest-income valid egg from the shared Finder feed.
+    -- Smart Smart Auto Join: continuously re-ranks remote reports and tries the best unattempted valid target.
     local autoJoinEnabled=false
     local autoJoinBusy=false
     local autoJoinCandidates={}
     local autoJoinCandidateIndex=1
     local autoJoinRetryRequested=false
-    local autoJoinButton=D.make('TextButton',{Name='AutoJoin',Text='AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-52),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(200,45,45),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
+    local autoJoinAttempted={}
+    local autoJoinFeedStamp=-1
+    local autoJoinButton=D.make('TextButton',{Name='SmartAutoJoin',Text='SMART AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-52),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(200,45,45),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
     D.make('UICorner',{CornerRadius=UDim.new(0,6)},autoJoinButton)
     autoJoinButton.TextScaled=true;autoJoinButton.TextWrapped=false
     D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=14},autoJoinButton)
     local function paintAutoJoin()
-        autoJoinButton.Text=autoJoinEnabled and 'AUTO JOIN: ON' or 'AUTO JOIN: OFF'
+        autoJoinButton.Text=autoJoinEnabled and 'SMART AUTO JOIN: ON' or 'SMART AUTO JOIN: OFF'
         autoJoinButton.BackgroundColor3=autoJoinEnabled and Color3.fromRGB(30,155,85) or Color3.fromRGB(200,45,45)
     end
     autoJoinButton.Activated:Connect(function()
         if not active then return end
         autoJoinEnabled=not autoJoinEnabled
         autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false
+        autoJoinAttempted={};autoJoinFeedStamp=-1
         if autoJoinEnabled then feedAt=-math.huge end
         paintAutoJoin()
-        queryStatus=autoJoinEnabled and 'Auto Join enabled: checking all available pages' or 'Auto Join disabled'
+        queryStatus=autoJoinEnabled and 'Smart Auto Join enabled: monitoring and ranking all available pages' or 'Smart Auto Join disabled'
     end)
     local publicBroadcastConfig=nil
     local featureConfig=nil
@@ -1148,14 +1151,16 @@ local function createFinder(D)
                 autoJoinBusy=true
                 local ok,err=pcall(function()
                     if not config then
-                        queryStatus='Auto Join: waiting for Finder connection'
+                        queryStatus='Smart Auto Join: waiting for Finder connection'
                         return
                     end
-                    if #autoJoinCandidates==0 then
+                    if #autoJoinCandidates==0 or feedAt~=autoJoinFeedStamp then
+                        autoJoinFeedStamp=feedAt
+                        autoJoinCandidates={}
                         if os.clock()-feedAt>6 then
                             local refreshed,message=refresh(true)
                             if not refreshed then
-                                queryStatus='Auto Join: '..tostring(message or 'feed refresh failed')
+                                queryStatus='Smart Auto Join: '..tostring(message or 'feed refresh failed')
                                 return
                             end
                         end
@@ -1171,6 +1176,7 @@ local function createFinder(D)
                                 and entry.uid~=nil and entry.full~=true and entry.unavailable~=true
                                 and entry.takenConfirmed~=true
                                 and rate>=autoJoinMinValue
+                                and not autoJoinAttempted[job..':'..tostring(entry.uid)]
                                 and D.publicEntryAllowed(entry,now)
                             if validEntry then candidates[#candidates+1]=entry end
                         end
@@ -1184,7 +1190,7 @@ local function createFinder(D)
                         autoJoinRetryRequested=false
                     end
                     if autoJoinCandidateIndex>#autoJoinCandidates then
-                        queryStatus='Auto Join: all available candidates failed'
+                        queryStatus='Smart Auto Join: all available candidates failed'
                         autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false
                         feedAt=0
                         return
@@ -1194,10 +1200,12 @@ local function createFinder(D)
                     if not target or tonumber(target.expiresAt or 0)<=now then
                         autoJoinCandidateIndex+=1
                         autoJoinRetryRequested=true
-                        queryStatus='Auto Join: report expired; trying next server'
+                        queryStatus='Smart Auto Join: report expired; trying next server'
                         return
                     end
-                    queryStatus='Auto Join: trying #'..tostring(autoJoinCandidateIndex)..' '..tostring(target.name)..' ('..tostring(target.rate)..'/s)'
+                    local attemptKey=tostring(target.jobId)..':'..tostring(target.uid)
+                    autoJoinAttempted[attemptKey]=true
+                    queryStatus='Smart Smart Auto Join: trying best match #'..tostring(autoJoinCandidateIndex)..' '..tostring(target.name)..' ('..tostring(target.rate)..'/s)'
                     local claim,claimError=network(config.endpoint..'/v1/join','POST',
                         Http:JSONEncode({placeId=target.placeId,jobId=target.jobId,uid=target.uid,reporterId=reporterId,userId=D.player.UserId}),
                         headers())
@@ -1208,17 +1216,17 @@ local function createFinder(D)
                         autoJoinCandidateIndex+=1
                         autoJoinRetryRequested=true
                         feedAt=0
-                        queryStatus='Auto Join: server #'..tostring(autoJoinCandidateIndex-1)..' unavailable; trying next'
+                        queryStatus='Smart Auto Join: server #'..tostring(autoJoinCandidateIndex-1)..' unavailable; trying next'
                         return
                     end
                     local joinExpiry=math.min(tonumber(target.expiresAt) or math.huge,tonumber(claim.expiresAt) or math.huge)
                     if now>=joinExpiry then
                         autoJoinCandidateIndex+=1;autoJoinRetryRequested=true;feedAt=0
-                        queryStatus='Auto Join: report expired; trying next server'
+                        queryStatus='Smart Auto Join: report expired; trying next server'
                         return
                     end
                     joining=true
-                    queryStatus='Auto Join: joining server #'..tostring(autoJoinCandidateIndex)
+                    queryStatus='Smart Auto Join: joining server #'..tostring(autoJoinCandidateIndex)
                     queueAutoExecute()
                     D.saveGuiBeforeTeleport()
                     D.stopFarm()
@@ -1229,20 +1237,20 @@ local function createFinder(D)
                     if not teleported then
                         joining=false
                         autoJoinCandidateIndex+=1;autoJoinRetryRequested=true
-                        queryStatus='Auto Join: teleport failed; trying next server'
-                        warn('Tenshi Beast Auto Join teleport:',teleportError)
+                        queryStatus='Smart Auto Join: teleport failed; trying next server'
+                        warn('UNKNOWN Smart Auto Join teleport:',teleportError)
                     end
                 end)
                 if not ok then
                     joining=false
                     autoJoinCandidateIndex+=1
                     autoJoinRetryRequested=true
-                    queryStatus='Auto Join error: '..tostring(err)
-                    warn('Tenshi Beast Auto Join:',err)
+                    queryStatus='Smart Auto Join error: '..tostring(err)
+                    warn('Tenshi Beast Smart Auto Join:',err)
                 end
                 autoJoinBusy=false
             end
-            task.wait(0.1)
+            task.wait(0.01)
         end
     end)
 
@@ -2364,7 +2372,7 @@ local function createFinder(D)
             if autoJoinEnabled and autoJoinCandidateIndex<=#autoJoinCandidates then
                 autoJoinCandidateIndex+=1
                 autoJoinRetryRequested=true
-                queryStatus='Auto Join: teleport failed; trying the next candidate'
+                queryStatus='Smart Auto Join: teleport failed; trying the next candidate'
             end
         end
     end)
