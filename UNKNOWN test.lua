@@ -3,7 +3,7 @@
 local function startUnknown()
 -- Auto Execute: register the next-server launch once, and retry silently if registration fails.
 local HttpService = game:GetService("HttpService")
-local RAW_SCRIPT_URL = "https://raw.githubusercontent.com/mostafaezzatrqm700-droid/UNKNOWN/backup/unknown-safe-copy-2026-11-07/UNKNOWN.lua?v=40"
+local RAW_SCRIPT_URL = "https://raw.githubusercontent.com/mostafaezzatrqm700-droid/TEST/main/UNKNOWN%20test.lua"
 local autoExecuteEnabled = true
 if type(readfile) == "function" then
     pcall(function()
