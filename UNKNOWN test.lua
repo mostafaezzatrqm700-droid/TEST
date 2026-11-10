@@ -901,17 +901,14 @@ local function createFinder(D)
             obj.TextColor3 = SpaceTheme.text
             obj.Font = Enum.Font.GothamBold
             obj.AutoButtonColor = false
-            -- Smart Auto Join keeps its own clean button appearance without the Space Theme outline.
-            if obj.Name ~= 'SmartAutoJoin' then
-                local stroke = obj:FindFirstChildOfClass('UIStroke')
-                if not stroke then
-                    stroke = Instance.new('UIStroke')
-                    stroke.Thickness = 1
-                    stroke.Parent = obj
-                end
-                stroke.Color = SpaceTheme.purple
-                stroke.Transparency = 0.18
+            local stroke = obj:FindFirstChildOfClass('UIStroke')
+            if not stroke then
+                stroke = Instance.new('UIStroke')
+                stroke.Thickness = 1
+                stroke.Parent = obj
             end
+            stroke.Color = SpaceTheme.purple
+            stroke.Transparency = 0.18
             local corner = obj:FindFirstChildOfClass('UICorner')
             if not corner then
                 corner = Instance.new('UICorner')
