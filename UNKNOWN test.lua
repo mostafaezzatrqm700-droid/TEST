@@ -1097,7 +1097,7 @@ local function createFinder(D)
     D.flushReport=report
     local function refresh(forceAllServers)
         local epoch=queryEpoch
-        local baseQuery='?localJob='..Http:UrlEncode(game.JobId)..'&placeId='..game.PlaceId..'&limit=10&tier=public&minRate='..tostring(minRate)..'&minRank='..tostring(minRank)
+        local baseQuery='?localJob='..Http:UrlEncode(game.JobId)..'&placeId='..game.PlaceId..'&limit=30&tier=public&minRate='..tostring(minRate)..'&minRank='..tostring(minRank)
         local requestedCycle=cycleInfo()
         if requestedCycle then baseQuery=baseQuery..'&cycleRemainingMs='..tostring(math.max(0,requestedCycle.remaining*1000))..'&cycleId='..tostring(requestedCycle.resetAt) end
         if othersOnly and not forceAllServers then baseQuery=baseQuery..'&onlyJob='..Http:UrlEncode(game.JobId) end
@@ -1190,7 +1190,7 @@ local function createFinder(D)
         local allItems,seenItems={},{}
         clearAutoJoinApiLog()
         addAutoJoinApiLog('Starting API feed request | page size: 10 | page cap: 100',Color3.fromRGB(120,205,255))
-        -- 100 pages x 10 reports = up to 1,000 reports per Auto Join refresh.
+        -- 100 pages x 30 reports = up to 3,000 reports per Auto Join refresh.
         local offset,maxPages=0,100
         local pageCount,lastPageSignature=0,nil
         local serverTime=nil
