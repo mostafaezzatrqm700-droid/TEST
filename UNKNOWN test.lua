@@ -401,6 +401,8 @@ local function createFinder(D)
     local autoJoinClockOffset=0
     local autoJoinRefreshBusy=false
     local autoJoinRefreshRetryAt=0
+    local autoJoinStatusText='AUTO JOIN: OFF'
+    local autoJoinReportStats='P:0 R:0 U:0 E:0'
     local autoJoinMinValueSettingKey='UNKNOWNAutoJoinMinValueV1'
     -- TeleportSetting is the freshest value across a server hop; local JSON may be stale.
     local teleportSavedAutoJoinValue
@@ -636,10 +638,12 @@ local function createFinder(D)
     local status=D.label(panel,'Connectingâ¦',UDim2.fromOffset(14,52),UDim2.new(1,-28,0,48),Color3.fromRGB(210,218,240),14)
     status.Visible=true
     status.TextWrapped=true
-    local autoJoinStatus=D.label(panel,'AUTO JOIN: OFF',UDim2.fromOffset(14,86),UDim2.new(1,-28,0,20),Color3.fromRGB(115,220,255),11)
+    local autoJoinStatus=D.label(panel,'AUTO JOIN: OFF',UDim2.fromOffset(14,86),UDim2.new(1,-28,0,30),Color3.fromRGB(115,220,255),10)
     autoJoinStatus.Name='AutoJoinStatus'
     autoJoinStatus.TextTruncate=Enum.TextTruncate.AtEnd
     autoJoinStatus.TextXAlignment=Enum.TextXAlignment.Left
+    autoJoinStatus.TextWrapped=true
+    autoJoinStatus.TextSize=10
     autoJoinStatus.ZIndex=5
     local discordSubtitle=D.label(panel,DISCORD,UDim2.fromOffset(10,27),UDim2.fromOffset(205,14),Color3.new(1,1,1),11)
     discordSubtitle.TextSize=11
@@ -691,7 +695,7 @@ local function createFinder(D)
     resetTimer.TextTruncate=Enum.TextTruncate.AtEnd
     resetTimer.Active=false
     local refreshing=false
-    local list=D.make('ScrollingFrame',{Position=UDim2.fromOffset(14,112),Size=UDim2.new(1,-16,1,-298),BackgroundTransparency=1,BorderSizePixel=0,AutomaticCanvasSize=Enum.AutomaticSize.None,CanvasSize=UDim2.new(),ScrollBarThickness=6,ScrollBarImageColor3=Color3.fromRGB(137,140,150),ScrollBarImageTransparency=0},panel)
+    local list=D.make('ScrollingFrame',{Position=UDim2.fromOffset(14,124),Size=UDim2.new(1,-16,1,-310),BackgroundTransparency=1,BorderSizePixel=0,AutomaticCanvasSize=Enum.AutomaticSize.None,CanvasSize=UDim2.new(),ScrollBarThickness=6,ScrollBarImageColor3=Color3.fromRGB(137,140,150),ScrollBarImageTransparency=0},panel)
     
     -- UNKNOWN SPACE THEME PATCH v1 (visual-only)
     local SpaceTheme = {
@@ -964,7 +968,7 @@ local function createFinder(D)
             autoJoinFeed={};autoJoinFeedAt=-math.huge
         end
         paintAutoJoin()
-        queryStatus=autoJoinEnabled and 'Auto Join enabled: checking all available pages' or 'Auto Join disabled'
+        setAutoJoinStatus(autoJoinEnabled and 'Auto Join: enabled; checking reports' or 'Auto Join: disabled')
     end)
     local publicBroadcastConfig=nil
     local featureConfig=nil
@@ -1175,12 +1179,16 @@ local function createFinder(D)
         if rank and rank>=7 and rank<=10 then return rank end
         return nil
     end
+    local function setAutoJoinStatus(message)
+        autoJoinStatusText=tostring(message)
+        queryStatus=message
+    end
     local function refreshAutoJoin()
         if autoJoinRefreshBusy then return false,'Auto Join refresh already running' end
         if networkBusy then return false,'Waiting for Finder network slot' end
         if not config then return false,'Finder not connected' end
         autoJoinRefreshBusy=true
-        queryStatus='Auto Join: FETCHING REPORTS'
+        setAutoJoinStatus('Auto Join: FETCHING REPORTS')
         local callOK,success,message=pcall(function()
             local baseQuery='?localJob='..Http:UrlEncode(game.JobId)..'&placeId='..game.PlaceId
                 ..'&limit=10&tier=public&minRate='..tostring(autoJoinMinValue)..'&minRank=7'
@@ -1190,13 +1198,15 @@ local function createFinder(D)
                     ..'&cycleId='..tostring(requestedCycle.resetAt)
             end
             local results,seen={},{}
+            local rawCount,uniqueCount=0,0
+            local rejected={}
             local offset,pageCount=0,0
             local maxPages=30
             local lastPageSignature=nil
             local serverTime=nil
             while pageCount<maxPages do
                 local query=baseQuery..'&offset='..tostring(offset)
-                queryStatus='Auto Join: FETCHING REPORTS (page '..tostring(pageCount+1)..')'
+                setAutoJoinStatus('Auto Join: FETCHING REPORTS (page '..tostring(pageCount+1)..')')
                 local data,err=network(config.endpoint..'/v1/eggs'..query,'GET',nil,headers())
                 if not data or type(data.items)~='table' then
                     if pageCount==0 then return false,err or 'Invalid Auto Join feed' end
@@ -1209,25 +1219,30 @@ local function createFinder(D)
                 local signatureParts={}
                 for _,entry in ipairs(data.items) do
                     if type(entry)=='table' then
+                        rawCount+=1
                         local identity=type(entry.key)=='string' and entry.key
                             or (tostring(entry.placeId or '')..':'..tostring(entry.jobId or '')..':'..tostring(entry.uid or ''))
                         if identity~='::' then
                             signatureParts[#signatureParts+1]=identity
                             if not seen[identity] then
                                 seen[identity]=true
+                                uniqueCount+=1
                                 local rank=autoJoinRank(entry)
                                 local rate=tonumber(entry.rate)
                                 local job=type(entry.jobId)=='string' and entry.jobId or ''
                                 local place=tonumber(entry.placeId)
                                 local expiry=tonumber(entry.expiresAt)
-                                if rank and rank>=minRank and rate and rate>=autoJoinMinValue
-                                    and job~='' and job~=game.JobId and place and place>0
-                                    and entry.uid~=nil and expiry and expiry>now
-                                    and entry.full~=true and entry.unavailable~=true
-                                    and entry.takenConfirmed~=true
-                                    and D.publicEntryAllowed(entry,now) then
-                                    results[#results+1]=entry
-                                end
+                                local reason
+                                if not rank or rank<minRank then reason='rank'
+                                elseif not rate or rate<autoJoinMinValue then reason='value'
+                                elseif job=='' or job==game.JobId then reason='job'
+                                elseif not place or place<=0 then reason='place'
+                                elseif entry.uid==nil then reason='uid'
+                                elseif not expiry or expiry<=now then reason='expired'
+                                elseif entry.full==true or entry.unavailable==true or entry.takenConfirmed==true then reason='busy'
+                                elseif not D.publicEntryAllowed(entry,now) then reason='lifecycle'
+                                else results[#results+1]=entry end
+                                if reason then rejected[reason]=(rejected[reason] or 0)+1 end
                             end
                         end
                     end
@@ -1240,7 +1255,7 @@ local function createFinder(D)
                 offset=following
                 task.wait(0.08)
             end
-            queryStatus='Auto Join: FILTERING SERVERS'
+            setAutoJoinStatus('Auto Join: FILTERING SERVERS')
             table.sort(results,function(a,b)
                 local ar,br=autoJoinRank(a) or 0,autoJoinRank(b) or 0
                 if ar~=br then return ar>br end
@@ -1251,7 +1266,12 @@ local function createFinder(D)
             autoJoinFeed=results
             autoJoinFeedAt=os.clock()
             autoJoinRefreshRetryAt=0
-            queryStatus='Auto Join: updated '..tostring(#results)..' eligible reports from '..tostring(pageCount)..' pages'
+            local rejectParts={}
+            for _,key in ipairs({'rank','value','job','place','uid','expired','busy','lifecycle'}) do
+                if (rejected[key] or 0)>0 then rejectParts[#rejectParts+1]=key..':'..tostring(rejected[key]) end
+            end
+            autoJoinReportStats='P:'..tostring(pageCount)..' R:'..tostring(rawCount)..' U:'..tostring(uniqueCount)..' E:'..tostring(#results)..' X:'..(#rejectParts>0 and table.concat(rejectParts,' ') or '0')
+            setAutoJoinStatus('Auto Join: updated reports; '..tostring(#results)..' eligible')
             return true
         end)
         autoJoinRefreshBusy=false
@@ -1306,10 +1326,10 @@ local function createFinder(D)
         while active do
             if autoJoinEnabled and not autoJoinBusy and not joining then
                 autoJoinBusy=true
-                queryStatus='Auto Join: STARTING'
+                setAutoJoinStatus('Auto Join: STARTING')
                 local ok,err=pcall(function()
                     if not config then
-                        queryStatus='Auto Join: waiting for Finder connection'
+                        setAutoJoinStatus('Auto Join: waiting for Finder connection')
                         return
                     end
                     if os.clock()-autoJoinFeedAt>6 then
@@ -1317,7 +1337,7 @@ local function createFinder(D)
                         local refreshed,message=refreshAutoJoin()
                         if not refreshed then
                             autoJoinRefreshRetryAt=os.clock()+0.5
-                            queryStatus='Auto Join: '..tostring(message or 'feed refresh failed')
+                            setAutoJoinStatus('Auto Join: '..tostring(message or 'feed refresh failed'))
                             return
                         end
                         buildAutoJoinCandidates()
@@ -1325,7 +1345,7 @@ local function createFinder(D)
                         buildAutoJoinCandidates()
                     end
                     if #autoJoinCandidates==0 then
-                        queryStatus='Auto Join: no untried eligible servers; waiting for new reports'
+                        setAutoJoinStatus('Auto Join: no untried eligible servers; waiting for new reports')
                         autoJoinFeedAt=os.clock()
                         autoJoinRefreshRetryAt=os.clock()+6
                         return
@@ -1386,7 +1406,7 @@ local function createFinder(D)
                         end
                     end
                     if autoJoinCandidateIndex>#autoJoinCandidates then
-                        queryStatus='Auto Join: all available candidates failed'
+                        setAutoJoinStatus('Auto Join: all available candidates failed')
                         autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false
                         autoJoinFeedAt=0
                         return
@@ -1396,12 +1416,12 @@ local function createFinder(D)
                     if not target or tonumber(target.expiresAt or 0)<=now then
                         autoJoinCandidateIndex+=1
                         autoJoinRetryRequested=true
-                        queryStatus='Auto Join: report expired; trying next server'
+                        setAutoJoinStatus('Auto Join: report expired; trying next server')
                         return
                     end
-                    queryStatus='Auto Join: trying #'..tostring(autoJoinCandidateIndex)..' '..tostring(target.name)..' ('..tostring(target.rate)..'/s)'
+                    setAutoJoinStatus('Auto Join: trying #'..tostring(autoJoinCandidateIndex)..' '..tostring(target.name)..' ('..tostring(target.rate)..'/s)')
                     markAutoJoinAttempt(target)
-                    queryStatus='Auto Join: REQUESTING JOIN'
+                    setAutoJoinStatus('Auto Join: REQUESTING JOIN')
                     local claim,claimError=network(config.endpoint..'/v1/join','POST',
                         Http:JSONEncode({placeId=target.placeId,jobId=target.jobId,uid=target.uid,reporterId=reporterId,userId=D.player.UserId}),
                         headers())
@@ -1411,17 +1431,17 @@ local function createFinder(D)
                         end
                         autoJoinCandidateIndex+=1
                         autoJoinRetryRequested=true
-                        queryStatus='Auto Join: server #'..tostring(autoJoinCandidateIndex-1)..' unavailable; trying next'
+                        setAutoJoinStatus('Auto Join: server #'..tostring(autoJoinCandidateIndex-1)..' unavailable; trying next')
                         return
                     end
                     local joinExpiry=math.min(tonumber(target.expiresAt) or math.huge,tonumber(claim.expiresAt) or math.huge)
                     if now>=joinExpiry then
                         autoJoinCandidateIndex+=1;autoJoinRetryRequested=true
-                        queryStatus='Auto Join: report expired; trying next server'
+                        setAutoJoinStatus('Auto Join: report expired; trying next server')
                         return
                     end
                     joining=true
-                    queryStatus='Auto Join: TELEPORTING TO SERVER #'..tostring(autoJoinCandidateIndex)
+                    setAutoJoinStatus('Auto Join: TELEPORTING TO SERVER #'..tostring(autoJoinCandidateIndex))
                     queueAutoExecute()
                     D.saveGuiBeforeTeleport()
                     D.stopFarm()
@@ -1432,7 +1452,7 @@ local function createFinder(D)
                     if not teleported then
                         joining=false
                         autoJoinCandidateIndex+=1;autoJoinRetryRequested=true
-                        queryStatus='Auto Join: teleport failed; trying next server'
+                        setAutoJoinStatus('Auto Join: teleport failed; trying next server')
                         warn('Tenshi Beast Auto Join teleport:',teleportError)
                     end
                 end)
@@ -1440,7 +1460,7 @@ local function createFinder(D)
                     joining=false
                     autoJoinCandidateIndex+=1
                     autoJoinRetryRequested=true
-                    queryStatus='Auto Join error: '..tostring(err)
+                    setAutoJoinStatus('Auto Join error: '..tostring(err))
                     warn('Tenshi Beast Auto Join:',err)
                 end
                 autoJoinBusy=false
@@ -2615,7 +2635,7 @@ local function createFinder(D)
     task.spawn(function()
         while active do
             status.Text=joining and 'Joining serverâ¦' or (tostring(reportStatus)..'\n'..tostring(queryStatus))
-            autoJoinStatus.Text=autoJoinEnabled and (tostring(queryStatus):find('Auto Join:',1,true) and tostring(queryStatus) or 'AUTO JOIN: ACTIVE') or 'AUTO JOIN: OFF'
+            autoJoinStatus.Text=autoJoinEnabled and (tostring(autoJoinStatusText)..'\n'..tostring(autoJoinReportStats)) or 'AUTO JOIN: OFF'
             autoJoinStatus.TextColor3=autoJoinEnabled and Color3.fromRGB(115,220,255) or Color3.fromRGB(170,175,190)
             local cycle=cycleInfo()
             if cycle then
