@@ -943,6 +943,34 @@ local function createFinder(D)
     local AUTO_JOIN_ALLOWED_RANKS={[7]=true,[8]=true,[9]=true,[10]=true}
     local autoJoinButton=D.make('TextButton',{Name='SmartAutoJoin',Text='SMART AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-52),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(200,45,45),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
     D.make('UICorner',{CornerRadius=UDim.new(0,6)},autoJoinButton)
+    local apiLogButton=D.make('TextButton',{Name='AutoJoinApiLogButton',Text='API LOG',Position=UDim2.new(1,-94,0,7),Size=UDim2.fromOffset(82,30),BackgroundColor3=Color3.fromRGB(45,90,145),TextColor3=Color3.new(1,1,1),TextSize=11,Font=Enum.Font.GothamBold,BorderSizePixel=0},panel)
+    D.make('UICorner',{CornerRadius=UDim.new(0,5)},apiLogButton)
+    local apiLogPanel=D.make('Frame',{Name='AutoJoinApiLogPanel',Position=UDim2.fromScale(0.04,0.12),Size=UDim2.fromScale(0.92,0.76),BackgroundColor3=Color3.fromRGB(12,15,25),BackgroundTransparency=0.03,BorderSizePixel=0,Visible=false,ZIndex=40},panel)
+    D.make('UICorner',{CornerRadius=UDim.new(0,8)},apiLogPanel)
+    D.make('UIStroke',{Color=Color3.fromRGB(75,145,210),Thickness=1.5},apiLogPanel)
+    local apiLogTitle=D.label(apiLogPanel,'SMART AUTO JOIN - API LOG',UDim2.fromOffset(12,8),UDim2.new(1,-62,0,28),Color3.fromRGB(235,245,255),13)
+    apiLogTitle.ZIndex=41
+    local apiLogClose=D.make('TextButton',{Name='ApiLogClose',Text='X',Position=UDim2.new(1,-38,0,7),Size=UDim2.fromOffset(28,26),BackgroundColor3=Color3.fromRGB(150,45,50),TextColor3=Color3.new(1,1,1),TextSize=12,Font=Enum.Font.GothamBold,BorderSizePixel=0,ZIndex=42},apiLogPanel)
+    D.make('UICorner',{CornerRadius=UDim.new(0,5)},apiLogClose)
+    local apiLogList=D.make('ScrollingFrame',{Name='ApiLogList',Position=UDim2.fromOffset(10,42),Size=UDim2.new(1,-20,1,-52),BackgroundColor3=Color3.fromRGB(20,24,36),BackgroundTransparency=0,BorderSizePixel=0,ScrollBarThickness=5,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ZIndex=41},apiLogPanel)
+    D.make('UICorner',{CornerRadius=UDim.new(0,5)},apiLogList)
+    local apiLogLayout=D.make('UIListLayout',{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},apiLogList)
+    D.make('UIPadding',{PaddingTop=UDim.new(0,6),PaddingBottom=UDim.new(0,6),PaddingLeft=UDim.new(0,6),PaddingRight=UDim.new(0,6)},apiLogList)
+    local apiLogEntries=0
+    local function clearAutoJoinApiLog()
+        for _,child in ipairs(apiLogList:GetChildren()) do
+            if child:IsA('TextLabel') then child:Destroy() end
+        end
+        apiLogEntries=0
+    end
+    local function addAutoJoinApiLog(message,color)
+        apiLogEntries+=1
+        local line=D.make('TextLabel',{Name='ApiLogEntry',Text='['..os.date('%H:%M:%S')..'] '..tostring(message),Size=UDim2.new(1,-4,0,30),AutomaticSize=Enum.AutomaticSize.Y,BackgroundColor3=Color3.fromRGB(29,35,50),BackgroundTransparency=0.1,BorderSizePixel=0,TextColor3=color or Color3.fromRGB(220,230,245),TextSize=11,Font=Enum.Font.Code,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Center,TextWrapped=true,LayoutOrder=apiLogEntries,ZIndex=42},apiLogList)
+        D.make('UIPadding',{PaddingLeft=UDim.new(0,7),PaddingRight=UDim.new(0,5),PaddingTop=UDim.new(0,5),PaddingBottom=UDim.new(0,5)},line)
+        task.defer(function() if apiLogList.Parent then apiLogList.CanvasPosition=Vector2.new(0,math.max(0,apiLogLayout.AbsoluteContentSize.Y)) end end)
+    end
+    apiLogButton.Activated:Connect(function() apiLogPanel.Visible=not apiLogPanel.Visible end)
+    apiLogClose.Activated:Connect(function() apiLogPanel.Visible=false end)
     autoJoinButton.TextScaled=true;autoJoinButton.TextWrapped=false
     D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=14},autoJoinButton)
     local function paintAutoJoin()
@@ -1155,10 +1183,13 @@ local function createFinder(D)
     -- API filtering (minRank=7) is reinforced by a local allowlist (Cosmic through Divine).
     local function refreshAutoJoinFeed()
         if not config then return false,'Finder connection unavailable' end
+        local refreshStartedAt=os.clock()
         local baseQuery='?localJob='..Http:UrlEncode(game.JobId)..'&placeId='..game.PlaceId
             ..'&limit=10&tier=public&minRate='..tostring(minRate)
             ..'&minRank='..tostring(AUTO_JOIN_MIN_RANK)
         local allItems,seenItems={},{}
+        clearAutoJoinApiLog()
+        addAutoJoinApiLog('Starting API feed request | page size: 10 | page cap: 100',Color3.fromRGB(120,205,255))
         -- 100 pages x 10 reports = up to 1,000 reports per Auto Join refresh.
         local offset,maxPages=0,100
         local pageCount,lastPageSignature=0,nil
@@ -1167,11 +1198,15 @@ local function createFinder(D)
             local requestQuery=baseQuery..'&offset='..tostring(offset)
             local data,err=network(config.endpoint..'/v1/eggs'..requestQuery,'GET',nil,headers())
             if not data or type(data.items)~='table' then
+                addAutoJoinApiLog('Page '..tostring(pageCount+1)..' failed: '..tostring(err or 'invalid response'),Color3.fromRGB(255,115,115))
                 if pageCount==0 then return false,err or 'Invalid Auto Join feed' end
                 break
             end
             pageCount+=1
             serverTime=tonumber(data.serverTime) or serverTime
+            local reportedTotal=tonumber(data.total) or tonumber(data.count) or tonumber(data.totalCount)
+            local nextForLog=tonumber(data.nextOffset)
+            addAutoJoinApiLog('Page '..tostring(pageCount)..': received '..tostring(#data.items)..' reports | nextOffset: '..tostring(nextForLog or 'none')..(reportedTotal and (' | API total: '..tostring(reportedTotal)) or ''))
             local signatureParts={}
             for _,entry in ipairs(data.items) do
                 if type(entry)=='table' then
@@ -1198,6 +1233,8 @@ local function createFinder(D)
         autoJoinFeed=allItems
         autoJoinFeedAt=os.clock()
         autoJoinFeedStamp+=1
+        addAutoJoinApiLog('Completed: '..tostring(#allItems)..' unique reports from '..tostring(pageCount)..' pages',Color3.fromRGB(110,235,155))
+        addAutoJoinApiLog('Refresh duration: '..string.format('%.2f',os.clock()-refreshStartedAt)..'s',Color3.fromRGB(190,200,220))
         return true,'Auto Join feed updated: '..tostring(#allItems)..' reports / '..tostring(pageCount)..' pages'
     end
     -- Income value is the only candidate sort key (highest first).
