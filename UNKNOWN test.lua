@@ -763,7 +763,7 @@ local function createFinder(D)
     local function styleSpaceControl(obj)
         if obj:IsA('TextButton') then
             -- Server status buttons own their colors (JOIN green, FULL/TAKEN red, HERE gray).
-            if obj.Name ~= 'JoinStatusButton' and obj.Name ~= 'AutoJoin' then
+            if obj.Name ~= 'JoinStatusButton' and obj.Name ~= 'AutoJoin' and obj.Name ~= 'SmartAutoJoin' and obj.Name ~= 'AutoExecuteToggle' then
                 obj.BackgroundColor3 = SpaceTheme.panel2
             end
             obj.TextColor3 = SpaceTheme.text
