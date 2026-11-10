@@ -1071,7 +1071,7 @@ local function createFinder(D)
     local autoJoinClockOffset=0
     local AUTO_JOIN_MIN_RANK=7
     local AUTO_JOIN_REFRESH_SECONDS=1.5
-    local AUTO_JOIN_SERVER_COOLDOWN=0.5
+    local AUTO_JOIN_SERVER_COOLDOWN=4
     local AUTO_JOIN_ALLOWED_RANKS={[7]=true,[8]=true,[9]=true,[10]=true}
     local autoJoinButton=D.make('TextButton',{Name='SmartAutoJoin',Text='SMART AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-52),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(200,45,45),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
     D.make('UICorner',{CornerRadius=UDim.new(0,6)},autoJoinButton)
