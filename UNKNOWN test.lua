@@ -924,7 +924,7 @@ local function createFinder(D)
             queryStatus='Enter a value from 1B to 50B (example: 1.5B)'
         end
     end)
-    -- Smart Smart Auto Join: continuously re-ranks remote reports and tries the best unattempted valid target.
+    -- Smart Auto Join: continuously re-ranks remote reports and tries the best unattempted valid target.
     local autoJoinEnabled=false
     local autoJoinBusy=false
     local autoJoinCandidates={}
@@ -1205,7 +1205,7 @@ local function createFinder(D)
                     end
                     local attemptKey=tostring(target.jobId)..':'..tostring(target.uid)
                     autoJoinAttempted[attemptKey]=true
-                    queryStatus='Smart Smart Auto Join: trying best match #'..tostring(autoJoinCandidateIndex)..' '..tostring(target.name)..' ('..tostring(target.rate)..'/s)'
+                    queryStatus='Smart Auto Join: trying best match #'..tostring(autoJoinCandidateIndex)..' '..tostring(target.name)..' ('..tostring(target.rate)..'/s)'
                     local claim,claimError=network(config.endpoint..'/v1/join','POST',
                         Http:JSONEncode({placeId=target.placeId,jobId=target.jobId,uid=target.uid,reporterId=reporterId,userId=D.player.UserId}),
                         headers())
@@ -1246,7 +1246,7 @@ local function createFinder(D)
                     autoJoinCandidateIndex+=1
                     autoJoinRetryRequested=true
                     queryStatus='Smart Auto Join error: '..tostring(err)
-                    warn('Tenshi Beast Smart Auto Join:',err)
+                    warn('UNKNOWN Smart Auto Join:',err)
                 end
                 autoJoinBusy=false
             end
