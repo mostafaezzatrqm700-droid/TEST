@@ -1072,21 +1072,7 @@ local function createFinder(D)
     local AUTO_JOIN_MIN_RANK=7
     local AUTO_JOIN_REFRESH_SECONDS=1.5
     local AUTO_JOIN_SERVER_COOLDOWN=4
-    -- The game's egg cycle is 300 seconds; night occupies the final 10 seconds.
-    -- Pause Auto Join 60 seconds before that night window, then resume at night start.
-    local AUTO_JOIN_NIGHT_PAUSE_BEFORE_SECONDS=70
-    local AUTO_JOIN_NIGHT_START_REMAINING_SECONDS=10
-    local autoJoinNightPaused=false
     local AUTO_JOIN_ALLOWED_RANKS={[7]=true,[8]=true,[9]=true,[10]=true}
-    local function autoJoinNightState()
-        local info=cycleInfo()
-        if not info or type(info.resetAt)~='number' or info.running~=true then return false,nil end
-        local remaining=(info.resetAt-workspace:GetServerTimeNow()*1000)/1000
-        if remaining<0 then remaining=0 end
-        local paused=remaining>AUTO_JOIN_NIGHT_START_REMAINING_SECONDS
-            and remaining<=AUTO_JOIN_NIGHT_PAUSE_BEFORE_SECONDS
-        return paused,remaining
-    end
     local autoJoinButton=D.make('TextButton',{Name='AutoJoin',Text='AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-52),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(200,45,45),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
     D.make('UICorner',{CornerRadius=UDim.new(0,6)},autoJoinButton)
     autoJoinButton.TextScaled=true;autoJoinButton.TextWrapped=false
@@ -1348,28 +1334,9 @@ local function createFinder(D)
     -- Keep feed order: join the first eligible server instead of waiting for a higher-value one.
     task.spawn(function()
         while active do
-            local nightPaused,nightRemaining=autoJoinNightState()
-            if autoJoinEnabled and nightPaused~=autoJoinNightPaused then
-                autoJoinNightPaused=nightPaused
-                autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false
-                if nightPaused then
-                    queryStatus='Auto Join: paused until night starts'
-                else
-                    autoJoinNextRefreshAt=0
-                    autoJoinFeedAt=-math.huge
-                    queryStatus='Auto Join: night started; resuming'
-                end
-            end
-            if autoJoinEnabled and nightPaused then
-                queryStatus='Auto Join: waiting for night ('..tostring(math.max(0,math.ceil((nightRemaining or 0)-AUTO_JOIN_NIGHT_START_REMAINING_SECONDS)))..'s)'
-            elseif autoJoinEnabled and not autoJoinBusy and not joining then
+            if autoJoinEnabled and not autoJoinBusy and not joining then
                 autoJoinBusy=true
                 local ok,err=pcall(function()
-                    local pausedNow=autoJoinNightState()
-                    if pausedNow then
-                        queryStatus='Auto Join: paused until night starts'
-                        return
-                    end
                     if not config then
                         queryStatus='Auto Join: waiting for Finder connection'
                         return
@@ -1429,11 +1396,6 @@ local function createFinder(D)
                     end
                     local attemptKey=tostring(target.jobId)..':'..tostring(target.uid)
                     local targetJob=tostring(target.jobId)
-                    local pausedBeforeClaim=autoJoinNightState()
-                    if pausedBeforeClaim then
-                        queryStatus='Auto Join: paused until night starts'
-                        return
-                    end
                     autoJoinAttempted[attemptKey]=true
                     autoJoinCooldown[targetJob]=os.clock()+AUTO_JOIN_SERVER_COOLDOWN
                     queryStatus='Auto Join: trying first available server ('..tostring(target.rate)..'/s)'
@@ -1453,11 +1415,6 @@ local function createFinder(D)
                     if now>=joinExpiry then
                         autoJoinCandidateIndex+=1;autoJoinRetryRequested=true
                         queryStatus='Auto Join: report expired; trying next server'
-                        return
-                    end
-                    local pausedBeforeTeleport=autoJoinNightState()
-                    if pausedBeforeTeleport then
-                        queryStatus='Auto Join: paused until night starts'
                         return
                     end
                     joining=true
