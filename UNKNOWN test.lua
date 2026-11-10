@@ -1102,7 +1102,7 @@ local function createFinder(D)
         autoJoinAttempted={};autoJoinCooldown={};autoJoinFeed={};autoJoinFeedAt=-math.huge;autoJoinNextRefreshAt=0;autoJoinFeedStamp=-1
         if autoJoinEnabled then feedAt=-math.huge end
         paintAutoJoin()
-        queryStatus=autoJoinEnabled and 'Auto Join enabled: joining the first eligible server found' or 'Smart Auto Join disabled'
+        queryStatus=autoJoinEnabled and 'Auto Join enabled: joining the first eligible server found' or 'Auto Join disabled'
     end)
     local publicBroadcastConfig=nil
     local featureConfig=nil
@@ -1367,7 +1367,7 @@ local function createFinder(D)
                 local ok,err=pcall(function()
                     local pausedNow=autoJoinNightState()
                     if pausedNow then
-                        queryStatus='Smart Auto Join: paused until night starts'
+                        queryStatus='Auto Join: paused until night starts'
                         return
                     end
                     if not config then
@@ -1431,7 +1431,7 @@ local function createFinder(D)
                     local targetJob=tostring(target.jobId)
                     local pausedBeforeClaim=autoJoinNightState()
                     if pausedBeforeClaim then
-                        queryStatus='Smart Auto Join: paused until night starts'
+                        queryStatus='Auto Join: paused until night starts'
                         return
                     end
                     autoJoinAttempted[attemptKey]=true
@@ -1452,12 +1452,12 @@ local function createFinder(D)
                     local joinExpiry=math.min(tonumber(target.expiresAt) or math.huge,tonumber(claim.expiresAt) or math.huge)
                     if now>=joinExpiry then
                         autoJoinCandidateIndex+=1;autoJoinRetryRequested=true
-                        queryStatus='Smart Auto Join: report expired; trying next server'
+                        queryStatus='Auto Join: report expired; trying next server'
                         return
                     end
                     local pausedBeforeTeleport=autoJoinNightState()
                     if pausedBeforeTeleport then
-                        queryStatus='Smart Auto Join: paused until night starts'
+                        queryStatus='Auto Join: paused until night starts'
                         return
                     end
                     joining=true
@@ -1473,7 +1473,7 @@ local function createFinder(D)
                         joining=false
                         autoJoinCandidateIndex+=1;autoJoinRetryRequested=true
                         queryStatus='Auto Join: teleport failed; trying next server'
-                        warn('UNKNOWN Smart Auto Join teleport:',teleportError)
+                        warn('UNKNOWN Auto Join teleport:',teleportError)
                     end
                 end)
                 if not ok then
@@ -1482,7 +1482,7 @@ local function createFinder(D)
                     autoJoinRetryRequested=true
                     autoJoinNextRefreshAt=math.min(autoJoinNextRefreshAt,os.clock()+1)
                     queryStatus='Auto Join error: '..tostring(err)
-                    warn('UNKNOWN Smart Auto Join:',err)
+                    warn('UNKNOWN Auto Join:',err)
                 end
                 autoJoinBusy=false
             end
@@ -2485,7 +2485,7 @@ local function createFinder(D)
             if autoJoinEnabled and autoJoinCandidateIndex<=#autoJoinCandidates then
                 autoJoinCandidateIndex+=1
                 autoJoinRetryRequested=true
-                queryStatus='Smart Auto Join: teleport failed; trying the next candidate'
+                queryStatus='Auto Join: teleport failed; trying the next candidate'
             end
         end
     end)
