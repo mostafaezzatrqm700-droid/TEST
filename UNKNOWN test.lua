@@ -2502,7 +2502,7 @@ local function createFinder(D)
             sharingNotice.Visible=false
             local ok=pcall(render)
             if not ok then queryStatus='Unable to display finder feed' end
-            task.wait(1)
+            task.wait(0.1)
         end
     end)
 end
