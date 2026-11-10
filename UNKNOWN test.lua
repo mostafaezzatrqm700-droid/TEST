@@ -2726,8 +2726,15 @@ local function launchUnknown()
         if type(getgenv) == "function" then runtimeEnv = getgenv() end
     end)
     local runningJob = "__UNKNOWN_RUNNING_JOB"
+    local playerGui = player:FindFirstChildOfClass("PlayerGui")
+    local existingFinder = playerGui and playerGui:FindFirstChild("UNKNOWN")
     if type(runtimeEnv) == "table" and runtimeEnv[runningJob] == game.JobId then
-        return
+        -- Ignore a repeat launch only while the actual Finder UI still exists.
+        -- A stale runtime flag must not block startup after the UI was closed/destroyed.
+        if existingFinder then
+            return
+        end
+        runtimeEnv[runningJob] = nil
     end
 
     local loadOk, loadError = pcall(startUnknown)
