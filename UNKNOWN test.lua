@@ -403,6 +403,8 @@ local function createFinder(D)
     local autoJoinRefreshRetryAt=0
     local autoJoinStatusText='AUTO JOIN: OFF'
     local autoJoinReportStats='P:0 R:0 U:0 E:0'
+    local autoJoinRejectedDetails={}
+    local updateAutoJoinDetailsDisplay
     local autoJoinMinValueSettingKey='UNKNOWNAutoJoinMinValueV1'
     -- TeleportSetting is the freshest value across a server hop; local JSON may be stale.
     local teleportSavedAutoJoinValue
@@ -696,6 +698,24 @@ local function createFinder(D)
     resetTimer.Active=false
     local refreshing=false
     local list=D.make('ScrollingFrame',{Position=UDim2.fromOffset(14,124),Size=UDim2.new(1,-16,1,-310),BackgroundTransparency=1,BorderSizePixel=0,AutomaticCanvasSize=Enum.AutomaticSize.None,CanvasSize=UDim2.new(),ScrollBarThickness=6,ScrollBarImageColor3=Color3.fromRGB(137,140,150),ScrollBarImageTransparency=0},panel)
+    local autoJoinDetailsPanel=D.make('Frame',{Name='AutoJoinBusyDetails',Position=list.Position,Size=list.Size,BackgroundColor3=Color3.fromRGB(13,10,23),BackgroundTransparency=0.04,BorderSizePixel=0,Visible=false,ZIndex=20},panel)
+    local detailsTitle=D.label(autoJoinDetailsPanel,'BUSY REPORT DETAILS',UDim2.fromOffset(8,4),UDim2.new(1,-16,0,22),Color3.fromRGB(255,205,110),11)
+    detailsTitle.ZIndex=21
+    local detailsScroll=D.make('ScrollingFrame',{Name='DetailsScroll',Position=UDim2.fromOffset(6,29),Size=UDim2.new(1,-12,1,-35),BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=5,ScrollBarImageColor3=Color3.fromRGB(170,150,205),ZIndex=21},autoJoinDetailsPanel)
+    local detailsLayout=D.make('UIListLayout',{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder},detailsScroll)
+    updateAutoJoinDetailsDisplay=function()
+        for _,child in ipairs(detailsScroll:GetChildren()) do
+            if child~=detailsLayout then child:Destroy() end
+        end
+        detailsTitle.Text='BUSY REPORT DETAILS ('..tostring(#autoJoinRejectedDetails)..')'
+        for index,detail in ipairs(autoJoinRejectedDetails) do
+            local row=D.make('TextLabel',{Name='BusyReport'..tostring(index),LayoutOrder=index,Size=UDim2.new(1,-8,0,82),BackgroundColor3=Color3.fromRGB(28,20,43),BackgroundTransparency=0.08,BorderSizePixel=0,Text=detail,TextColor3=Color3.fromRGB(235,230,245),TextSize=10,Font=Enum.Font.Gotham,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,RichText=false,ZIndex=22},detailsScroll)
+            row.TextTruncate=Enum.TextTruncate.None
+            D.make('UIPadding',{PaddingLeft=UDim.new(0,6),PaddingRight=UDim.new(0,5),PaddingTop=UDim.new(0,5),PaddingBottom=UDim.new(0,4)},row)
+        end
+        autoJoinDetailsPanel.Visible=autoJoinEnabled and #autoJoinFeed==0 and #autoJoinRejectedDetails>0
+        detailsScroll.CanvasPosition=Vector2.new(0,0)
+    end
     
     -- UNKNOWN SPACE THEME PATCH v1 (visual-only)
     local SpaceTheme = {
@@ -1200,6 +1220,7 @@ local function createFinder(D)
             local results,seen={},{}
             local rawCount,uniqueCount=0,0
             local rejected={}
+            local rejectedDetails={}
             local offset,pageCount=0,0
             local maxPages=30
             local lastPageSignature=nil
@@ -1242,7 +1263,18 @@ local function createFinder(D)
                                 elseif entry.full==true or entry.unavailable==true or entry.takenConfirmed==true then reason='busy'
                                 elseif not D.publicEntryAllowed(entry,now) then reason='lifecycle'
                                 else results[#results+1]=entry end
-                                if reason then rejected[reason]=(rejected[reason] or 0)+1 end
+                                if reason then
+                                    rejected[reason]=(rejected[reason] or 0)+1
+                                    if reason=='busy' then
+                                        local flags='full='..tostring(entry.full==true)..' | unavailable='..tostring(entry.unavailable==true)..' | takenConfirmed='..tostring(entry.takenConfirmed==true)
+                                        rejectedDetails[#rejectedDetails+1]=table.concat({
+                                            'Report '..tostring(uniqueCount)..' | '..tostring(entry.name or entry.eggName or 'Unknown egg'),
+                                            'Rarity: '..tostring(entry.rarity or entry.tierName or 'Unknown')..' | Rank: '..tostring(rank or 'N/A')..' | Rate: '..tostring(rate or 'N/A'),
+                                            'JobId: '..tostring(job~='' and job or 'Missing')..' | UID: '..tostring(entry.uid or 'Missing'),
+                                            flags
+                                        },'\n')
+                                    end
+                                end
                             end
                         end
                     end
@@ -1264,7 +1296,9 @@ local function createFinder(D)
                 return tostring(a.jobId)<tostring(b.jobId)
             end)
             autoJoinFeed=results
+            autoJoinRejectedDetails=rejectedDetails
             autoJoinFeedAt=os.clock()
+            if updateAutoJoinDetailsDisplay then updateAutoJoinDetailsDisplay() end
             autoJoinRefreshRetryAt=0
             local rejectParts={}
             for _,key in ipairs({'rank','value','job','place','uid','expired','busy','lifecycle'}) do
@@ -2636,6 +2670,7 @@ local function createFinder(D)
         while active do
             status.Text=joining and 'Joining serverâ¦' or (tostring(reportStatus)..'\n'..tostring(queryStatus))
             autoJoinStatus.Text=autoJoinEnabled and (tostring(autoJoinStatusText)..'\n'..tostring(autoJoinReportStats)) or 'AUTO JOIN: OFF'
+            if updateAutoJoinDetailsDisplay then updateAutoJoinDetailsDisplay() end
             autoJoinStatus.TextColor3=autoJoinEnabled and Color3.fromRGB(115,220,255) or Color3.fromRGB(170,175,190)
             local cycle=cycleInfo()
             if cycle then
