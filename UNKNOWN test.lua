@@ -2634,13 +2634,20 @@ local function launchUnknown()
     pcall(function()
         if type(getgenv) == "function" then runtimeEnv = getgenv() end
     end)
-    if type(runtimeEnv) == "table" then
-        local runningJob = "__UNKNOWN_RUNNING_JOB"
-        if runtimeEnv[runningJob] == game.JobId then return end
-        runtimeEnv[runningJob] = game.JobId
+    local runningJob = "__UNKNOWN_RUNNING_JOB"
+    if type(runtimeEnv) == "table" and runtimeEnv[runningJob] == game.JobId then
+        return
     end
+
     local loadOk, loadError = pcall(startUnknown)
-    if not loadOk then
+    if loadOk then
+        if type(runtimeEnv) == "table" then
+            runtimeEnv[runningJob] = game.JobId
+        end
+    else
+        if type(runtimeEnv) == "table" and runtimeEnv[runningJob] == game.JobId then
+            runtimeEnv[runningJob] = nil
+        end
         warn("[UNKNOWN] Finder startup failed: " .. tostring(loadError))
     end
 end
