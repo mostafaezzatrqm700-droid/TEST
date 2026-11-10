@@ -2550,6 +2550,7 @@ local function run()
     local autoStealBusy=false
     local autoStealLastUid=nil
     local autoStealLastAttempt=0
+    local autoStealRetryAt={}
     local function resolveSafeZone()
         local world=workspace:FindFirstChild('World')
         local candidates={
@@ -2607,8 +2608,9 @@ local function run()
                 end
             end
             if not record or not record.Uid or typeof(record.BottomCFrame)~='CFrame' then return end
+            if (record.State~=States.Slot and record.State~=States.Dropped) or record.CarrierUserId~=nil then return end
             local uid=tostring(record.Uid)
-            if autoStealLastUid==uid and os.clock()-autoStealLastAttempt<2 then return end
+            if autoStealRetryAt[uid] and os.clock()<autoStealRetryAt[uid] then return end
             local eggModel=workspace:FindFirstChild('AreaEggSlotsClient')
             eggModel=eggModel and eggModel:FindFirstChild(uid)
             local pickupPos=record.BottomCFrame.Position
@@ -2630,7 +2632,7 @@ local function run()
                 local fresh=EggState.ReadFieldEgg(uid)
                 if fresh and fresh.CarrierUserId==player.UserId then accepted=true;break end
             end
-            if not accepted then autoStealLastUid=uid;return end
+            if not accepted then autoStealLastUid=uid;autoStealRetryAt[uid]=os.clock()+0.9;return end
             local carried=false
             for _=1,10 do
                 local fresh=EggState.ReadFieldEgg(uid)
