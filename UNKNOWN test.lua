@@ -1199,7 +1199,7 @@ local function createFinder(D)
         autoJoinFeedStamp+=1
         return true,'Auto Join feed updated: '..tostring(#allItems)..' reports / '..tostring(pageCount)..' pages'
     end
-    -- Rank is the primary sort key; income breaks ties, then the freshest report.
+    -- Income value is the only candidate sort key (highest first).
     task.spawn(function()
         while active do
             if autoJoinEnabled and not autoJoinBusy and not joining then
@@ -1245,14 +1245,7 @@ local function createFinder(D)
                             if validEntry then candidates[#candidates+1]=entry end
                         end
                         table.sort(candidates,function(a,b)
-                            local ar=tonumber(a.rank or a.localTier or a.tier) or 0
-                            local br=tonumber(b.rank or b.localTier or b.tier) or 0
-                            if ar~=br then return ar>br end
-                            local av,bv=tonumber(a.rate) or 0,tonumber(b.rate) or 0
-                            if av~=bv then return av>bv end
-                            local at=tonumber(a.reportedAt or a.updatedAt or a.createdAt or a.timestamp) or 0
-                            local bt=tonumber(b.reportedAt or b.updatedAt or b.createdAt or b.timestamp) or 0
-                            return at>bt
+                            return (tonumber(a.rate) or 0)>(tonumber(b.rate) or 0)
                         end)
                         autoJoinCandidates=candidates
                         autoJoinCandidateIndex=1
