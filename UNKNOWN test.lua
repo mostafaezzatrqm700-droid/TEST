@@ -1159,7 +1159,8 @@ local function createFinder(D)
             ..'&limit=10&tier=public&minRate='..tostring(minRate)
             ..'&minRank='..tostring(AUTO_JOIN_MIN_RANK)
         local allItems,seenItems={},{}
-        local offset,maxPages=0,30
+        -- 100 pages x 10 reports = up to 1,000 reports per Auto Join refresh.
+        local offset,maxPages=0,100
         local pageCount,lastPageSignature=0,nil
         local serverTime=nil
         while pageCount<maxPages do
