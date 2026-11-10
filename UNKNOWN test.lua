@@ -1071,7 +1071,7 @@ local function createFinder(D)
     local autoJoinClockOffset=0
     local autoJoinSearchStartedAt=nil
     local AUTO_JOIN_MIN_RANK=7
-    local AUTO_JOIN_REFRESH_SECONDS=1
+    local AUTO_JOIN_REFRESH_SECONDS=0.25
     local AUTO_JOIN_SEARCH_DELAY_SECONDS=5
     local AUTO_JOIN_SERVER_COOLDOWN=0.5
     local AUTO_JOIN_ALLOWED_RANKS={[7]=true,[8]=true,[9]=true,[10]=true}
