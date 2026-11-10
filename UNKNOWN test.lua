@@ -265,6 +265,138 @@ local function readTraitNames(record)
     add(record.BaseMutation);table.sort(names)
     return names,known
 end
+local function installFinderButtonMotion(D,panel,Input,isActive)
+    local Tweens=game:GetService('TweenService')
+    local states={}
+    local function attachButtonMotion(button)
+        if not (button:IsA('TextButton') or button:IsA('ImageButton')) then return end
+        if button.Name=='SettingsOverlay' or button.Name=='LauncherHitArea' or button:GetAttribute('TenshiButtonMotion') then return end
+        button:SetAttribute('TenshiButtonMotion',true)
+        local motion=D.make('UIScale',{Name='ButtonMotion',Scale=1},button)
+        local state={button=button,motion=motion,base=button.Position,hover=false,input=nil,tween=nil,writing=false,alive=true}
+        states[button]=state
+        local function enabled() return button.Active~=false and button.Selectable~=false end
+        local function center()
+            if not state.alive or not button.Parent then return end
+            local delta=motion.Scale-1
+            local x,y=0.5-button.AnchorPoint.X,0.5-button.AnchorPoint.Y
+            local size=button.Size
+            local goal=UDim2.new(state.base.X.Scale-size.X.Scale*delta*x,state.base.X.Offset-size.X.Offset*delta*x,state.base.Y.Scale-size.Y.Scale*delta*y,state.base.Y.Offset-size.Y.Offset*delta*y)
+            state.lastPosition=goal
+            if button.Position==goal then return end
+            state.writing=true
+            button.Position=goal
+            state.writing=false
+        end
+        local function update()
+            if not state.alive then return end
+            if state.tween then state.tween:Cancel();state.tween=nil end
+            local target=1
+            if enabled() then
+                if state.input then target=0.95
+                elseif state.hover then
+                    local width=math.max(1,button.AbsoluteSize.X/math.max(0.01,motion.Scale))
+                    target=math.min(1.06,1+5/width)
+                end
+            else state.input=nil;state.hover=false end
+            state.tween=Tweens:Create(motion,TweenInfo.new(state.input and 0.08 or 0.13,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Scale=target})
+            state.tween:Play()
+        end
+        state.update=update
+        motion:GetPropertyChangedSignal('Scale'):Connect(center)
+        button:GetPropertyChangedSignal('Position'):Connect(function()
+            if not state.writing and button.Position~=state.lastPosition then state.base=button.Position;center() end
+        end)
+        button:GetPropertyChangedSignal('Size'):Connect(center)
+        button:GetPropertyChangedSignal('AnchorPoint'):Connect(center)
+        button:GetPropertyChangedSignal('Active'):Connect(update)
+        button:GetPropertyChangedSignal('Selectable'):Connect(update)
+        button.MouseEnter:Connect(function()
+            if Input:GetLastInputType()==Enum.UserInputType.Touch then return end
+            state.hover=true;update()
+        end)
+        button.MouseLeave:Connect(function() state.hover=false;update() end)
+        button.SelectionGained:Connect(function() state.hover=true;update() end)
+        button.SelectionLost:Connect(function() state.hover=false;update() end)
+        button.InputBegan:Connect(function(input)
+            if not enabled() then return end
+            if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
+                if input.UserInputType==Enum.UserInputType.Touch then state.hover=false end
+                state.input=input;update()
+            end
+        end)
+        button.Destroying:Connect(function()
+            state.alive=false
+            if state.tween then state.tween:Cancel() end
+            states[button]=nil
+        end)
+    end
+    local release=Input.InputEnded:Connect(function(input)
+        for _,state in pairs(states) do
+            if state.input and (state.input==input or state.input.UserInputType==Enum.UserInputType.MouseButton1 and input.UserInputType==Enum.UserInputType.MouseButton1) then
+                state.input=nil;state.update()
+            end
+        end
+    end)
+    for _,button in ipairs(panel:GetDescendants()) do attachButtonMotion(button) end
+    local added=panel.DescendantAdded:Connect(function(button)
+        if button:IsA('TextButton') or button:IsA('ImageButton') then
+            task.defer(function() if isActive() and button.Parent then attachButtonMotion(button) end end)
+        end
+    end)
+    local hidden=panel:GetPropertyChangedSignal('Visible'):Connect(function()
+        if panel.Visible then return end
+        for _,state in pairs(states) do state.input=nil;state.hover=false;state.update() end
+    end)
+    D.gui.Destroying:Connect(function()
+        release:Disconnect();added:Disconnect();hidden:Disconnect()
+        for _,state in pairs(states) do
+            state.alive=false;if state.tween then state.tween:Cancel() end
+        end
+        table.clear(states)
+    end)
+end
+
+local function installFinderScrollbarMotion(D,panel,list,Input,isActive)
+    local Tweens=game:GetService('TweenService')
+    local hovered,moving,scheduled=false,false,false
+    local lastMovement=0
+    local tween
+    local function paint()
+        if tween then tween:Cancel() end
+        local highlighted=hovered or moving
+        tween=Tweens:Create(list,TweenInfo.new(0.14,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{
+            ScrollBarThickness=highlighted and 9 or 6,
+            ScrollBarImageColor3=highlighted and Color3.fromRGB(200,205,220) or Color3.fromRGB(137,140,150),
+            ScrollBarImageTransparency=highlighted and 0 or 0.18
+        })
+        tween:Play()
+    end
+    local function idle()
+        if not isActive() or not list.Parent then scheduled=false;return end
+        if os.clock()-lastMovement<0.22 then task.delay(0.12,idle);return end
+        scheduled=false;moving=false;paint()
+    end
+    local enter=list.MouseEnter:Connect(function()
+        if Input:GetLastInputType()==Enum.UserInputType.Touch then return end
+        hovered=true;paint()
+    end)
+    local leave=list.MouseLeave:Connect(function() hovered=false;paint() end)
+    local scrolled=list:GetPropertyChangedSignal('CanvasPosition'):Connect(function()
+        lastMovement=os.clock()
+        if not moving then moving=true;paint() end
+        if not scheduled then scheduled=true;task.delay(0.24,idle) end
+    end)
+    local hidden=panel:GetPropertyChangedSignal('Visible'):Connect(function()
+        if not panel.Visible then hovered=false;moving=false;paint() end
+    end)
+    D.gui.Destroying:Connect(function()
+        enter:Disconnect();leave:Disconnect();scrolled:Disconnect();hidden:Disconnect()
+        if tween then tween:Cancel() end
+    end)
+    paint()
+end
+
 local function createFinder(D)
     local cycleModule
     pcall(function() cycleModule=module('Shared.Util.AreaEggCycle') end)
@@ -2334,137 +2466,8 @@ local function createFinder(D)
             end
         end)
     end)
-    do
-        local Tweens=game:GetService('TweenService')
-        local states={}
-        local function attachButtonMotion(button)
-            if not (button:IsA('TextButton') or button:IsA('ImageButton')) then return end
-            if button.Name=='SettingsOverlay' or button.Name=='LauncherHitArea' or button:GetAttribute('TenshiButtonMotion') then return end
-            button:SetAttribute('TenshiButtonMotion',true)
-            local motion=D.make('UIScale',{Name='ButtonMotion',Scale=1},button)
-            local state={button=button,motion=motion,base=button.Position,hover=false,input=nil,tween=nil,writing=false,alive=true}
-            states[button]=state
-            local function enabled() return button.Active~=false and button.Selectable~=false end
-            local function center()
-                if not state.alive or not button.Parent then return end
-                local delta=motion.Scale-1
-                local x,y=0.5-button.AnchorPoint.X,0.5-button.AnchorPoint.Y
-                local size=button.Size
-                local goal=UDim2.new(state.base.X.Scale-size.X.Scale*delta*x,state.base.X.Offset-size.X.Offset*delta*x,state.base.Y.Scale-size.Y.Scale*delta*y,state.base.Y.Offset-size.Y.Offset*delta*y)
-                state.lastPosition=goal
-                if button.Position==goal then return end
-                state.writing=true
-                button.Position=goal
-                state.writing=false
-            end
-            local function update()
-                if not state.alive then return end
-                if state.tween then state.tween:Cancel();state.tween=nil end
-                local target=1
-                if enabled() then
-                    if state.input then target=0.95
-                    elseif state.hover then
-                        local width=math.max(1,button.AbsoluteSize.X/math.max(0.01,motion.Scale))
-                        target=math.min(1.06,1+5/width)
-                    end
-                else state.input=nil;state.hover=false end
-                state.tween=Tweens:Create(motion,TweenInfo.new(state.input and 0.08 or 0.13,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Scale=target})
-                state.tween:Play()
-            end
-            state.update=update
-            motion:GetPropertyChangedSignal('Scale'):Connect(center)
-            button:GetPropertyChangedSignal('Position'):Connect(function()
-                if not state.writing and button.Position~=state.lastPosition then state.base=button.Position;center() end
-            end)
-            button:GetPropertyChangedSignal('Size'):Connect(center)
-            button:GetPropertyChangedSignal('AnchorPoint'):Connect(center)
-            button:GetPropertyChangedSignal('Active'):Connect(update)
-            button:GetPropertyChangedSignal('Selectable'):Connect(update)
-            button.MouseEnter:Connect(function()
-                if Input:GetLastInputType()==Enum.UserInputType.Touch then return end
-                state.hover=true;update()
-            end)
-            button.MouseLeave:Connect(function() state.hover=false;update() end)
-            button.SelectionGained:Connect(function() state.hover=true;update() end)
-            button.SelectionLost:Connect(function() state.hover=false;update() end)
-            button.InputBegan:Connect(function(input)
-                if not enabled() then return end
-                if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
-                    if input.UserInputType==Enum.UserInputType.Touch then state.hover=false end
-                    state.input=input;update()
-                end
-            end)
-            button.Destroying:Connect(function()
-                state.alive=false
-                if state.tween then state.tween:Cancel() end
-                states[button]=nil
-            end)
-        end
-        local release=Input.InputEnded:Connect(function(input)
-            for _,state in pairs(states) do
-                if state.input and (state.input==input or state.input.UserInputType==Enum.UserInputType.MouseButton1 and input.UserInputType==Enum.UserInputType.MouseButton1) then
-                    state.input=nil;state.update()
-                end
-            end
-        end)
-        for _,button in ipairs(panel:GetDescendants()) do attachButtonMotion(button) end
-        local added=panel.DescendantAdded:Connect(function(button)
-            if button:IsA('TextButton') or button:IsA('ImageButton') then
-                task.defer(function() if active and button.Parent then attachButtonMotion(button) end end)
-            end
-        end)
-        local hidden=panel:GetPropertyChangedSignal('Visible'):Connect(function()
-            if panel.Visible then return end
-            for _,state in pairs(states) do state.input=nil;state.hover=false;state.update() end
-        end)
-        D.gui.Destroying:Connect(function()
-            release:Disconnect();added:Disconnect();hidden:Disconnect()
-            for _,state in pairs(states) do
-                state.alive=false;if state.tween then state.tween:Cancel() end
-            end
-            table.clear(states)
-        end)
-    end
-
-    do
-        local Tweens=game:GetService('TweenService')
-        local hovered,moving,scheduled=false,false,false
-        local lastMovement=0
-        local tween
-        local function paint()
-            if tween then tween:Cancel() end
-            local highlighted=hovered or moving
-            tween=Tweens:Create(list,TweenInfo.new(0.14,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{
-                ScrollBarThickness=highlighted and 9 or 6,
-                ScrollBarImageColor3=highlighted and Color3.fromRGB(200,205,220) or Color3.fromRGB(137,140,150),
-                ScrollBarImageTransparency=highlighted and 0 or 0.18
-            })
-            tween:Play()
-        end
-        local function idle()
-            if not active or not list.Parent then scheduled=false;return end
-            if os.clock()-lastMovement<0.22 then task.delay(0.12,idle);return end
-            scheduled=false;moving=false;paint()
-        end
-        local enter=list.MouseEnter:Connect(function()
-            if Input:GetLastInputType()==Enum.UserInputType.Touch then return end
-            hovered=true;paint()
-        end)
-        local leave=list.MouseLeave:Connect(function() hovered=false;paint() end)
-        local scrolled=list:GetPropertyChangedSignal('CanvasPosition'):Connect(function()
-            lastMovement=os.clock()
-            if not moving then moving=true;paint() end
-            if not scheduled then scheduled=true;task.delay(0.24,idle) end
-        end)
-        local hidden=panel:GetPropertyChangedSignal('Visible'):Connect(function()
-            if not panel.Visible then hovered=false;moving=false;paint() end
-        end)
-        D.gui.Destroying:Connect(function()
-            enter:Disconnect();leave:Disconnect();scrolled:Disconnect();hidden:Disconnect()
-            if tween then tween:Cancel() end
-        end)
-        paint()
-    end
+    installFinderButtonMotion(D,panel,Input,function() return active end)
+    installFinderScrollbarMotion(D,panel,list,Input,function() return active end)
 
     fitFinder()
     panel.Visible=true
