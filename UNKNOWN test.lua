@@ -1056,7 +1056,7 @@ local function createFinder(D)
             queryStatus='Enter a value from 1B to 50B (example: 1.5B)'
         end
     end)
-    -- Smart Auto Join: continuously re-ranks remote reports and tries the best unattempted valid target.
+    -- Auto Join: immediately tries the first eligible report in the latest feed.
     local autoJoinEnabled=false
     local autoJoinBusy=false
     local autoJoinCandidates={}
@@ -1073,7 +1073,7 @@ local function createFinder(D)
     local AUTO_JOIN_REFRESH_SECONDS=1.5
     local AUTO_JOIN_SERVER_COOLDOWN=4
     -- The game's egg cycle is 300 seconds; night occupies the final 10 seconds.
-    -- Pause Smart Auto Join 60 seconds before that night window, then resume at night start.
+    -- Pause Auto Join 60 seconds before that night window, then resume at night start.
     local AUTO_JOIN_NIGHT_PAUSE_BEFORE_SECONDS=70
     local AUTO_JOIN_NIGHT_START_REMAINING_SECONDS=10
     local autoJoinNightPaused=false
@@ -1087,12 +1087,12 @@ local function createFinder(D)
             and remaining<=AUTO_JOIN_NIGHT_PAUSE_BEFORE_SECONDS
         return paused,remaining
     end
-    local autoJoinButton=D.make('TextButton',{Name='SmartAutoJoin',Text='SMART AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-52),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(200,45,45),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
+    local autoJoinButton=D.make('TextButton',{Name='AutoJoin',Text='AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-52),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(200,45,45),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
     D.make('UICorner',{CornerRadius=UDim.new(0,6)},autoJoinButton)
     autoJoinButton.TextScaled=true;autoJoinButton.TextWrapped=false
     D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=14},autoJoinButton)
     local function paintAutoJoin()
-        autoJoinButton.Text=autoJoinEnabled and 'SMART AUTO JOIN: ON' or 'SMART AUTO JOIN: OFF'
+        autoJoinButton.Text=autoJoinEnabled and 'AUTO JOIN: ON' or 'AUTO JOIN: OFF'
         autoJoinButton.BackgroundColor3=autoJoinEnabled and Color3.fromRGB(30,155,85) or Color3.fromRGB(200,45,45)
     end
     autoJoinButton.Activated:Connect(function()
@@ -1102,7 +1102,7 @@ local function createFinder(D)
         autoJoinAttempted={};autoJoinCooldown={};autoJoinFeed={};autoJoinFeedAt=-math.huge;autoJoinNextRefreshAt=0;autoJoinFeedStamp=-1
         if autoJoinEnabled then feedAt=-math.huge end
         paintAutoJoin()
-        queryStatus=autoJoinEnabled and 'Smart Auto Join enabled: monitoring and ranking all available pages' or 'Smart Auto Join disabled'
+        queryStatus=autoJoinEnabled and 'Auto Join enabled: joining the first eligible server found' or 'Smart Auto Join disabled'
     end)
     local publicBroadcastConfig=nil
     local featureConfig=nil
@@ -1336,9 +1336,8 @@ local function createFinder(D)
             if #data.items==0 or signature=='' or signature==lastPageSignature then break end
             lastPageSignature=signature
             local following=tonumber(data.nextOffset)
-            if not following or following<=offset then break end
-            offset=following
-            task.wait(0.01)
+            -- Do not crawl more pages looking for a better server; use this first page now.
+            break
         end
         autoJoinClockOffset=(serverTime or os.time()*1000)/1000-os.clock()
         autoJoinFeed=allItems
@@ -1346,7 +1345,7 @@ local function createFinder(D)
         autoJoinFeedStamp+=1
         return true,'Auto Join feed updated: '..tostring(#allItems)..' reports / '..tostring(pageCount)..' pages'
     end
-    -- Income value is the only candidate sort key (highest first).
+    -- Keep feed order: join the first eligible server instead of waiting for a higher-value one.
     task.spawn(function()
         while active do
             local nightPaused,nightRemaining=autoJoinNightState()
@@ -1354,15 +1353,15 @@ local function createFinder(D)
                 autoJoinNightPaused=nightPaused
                 autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false
                 if nightPaused then
-                    queryStatus='Smart Auto Join: paused until night starts'
+                    queryStatus='Auto Join: paused until night starts'
                 else
                     autoJoinNextRefreshAt=0
                     autoJoinFeedAt=-math.huge
-                    queryStatus='Smart Auto Join: night started; resuming'
+                    queryStatus='Auto Join: night started; resuming'
                 end
             end
             if autoJoinEnabled and nightPaused then
-                queryStatus='Smart Auto Join: waiting for night ('..tostring(math.max(0,math.ceil((nightRemaining or 0)-AUTO_JOIN_NIGHT_START_REMAINING_SECONDS)))..'s)'
+                queryStatus='Auto Join: waiting for night ('..tostring(math.max(0,math.ceil((nightRemaining or 0)-AUTO_JOIN_NIGHT_START_REMAINING_SECONDS)))..'s)'
             elseif autoJoinEnabled and not autoJoinBusy and not joining then
                 autoJoinBusy=true
                 local ok,err=pcall(function()
@@ -1372,7 +1371,7 @@ local function createFinder(D)
                         return
                     end
                     if not config then
-                        queryStatus='Smart Auto Join: waiting for Finder connection'
+                        queryStatus='Auto Join: waiting for Finder connection'
                         return
                     end
                     local nowClock=os.clock()
@@ -1385,7 +1384,7 @@ local function createFinder(D)
                             autoJoinCandidateIndex=1
                         else
                             autoJoinNextRefreshAt=nowClock+1
-                            queryStatus='Smart Auto Join: '..tostring(message or 'feed refresh failed')
+                            queryStatus='Auto Join: '..tostring(message or 'feed refresh failed')
                             return
                         end
                     end
@@ -1410,15 +1409,12 @@ local function createFinder(D)
                                 and D.publicEntryAllowed(entry,now)
                             if validEntry then candidates[#candidates+1]=entry end
                         end
-                        table.sort(candidates,function(a,b)
-                            return (tonumber(a.rate) or 0)>(tonumber(b.rate) or 0)
-                        end)
                         autoJoinCandidates=candidates
                         autoJoinCandidateIndex=1
                         autoJoinRetryRequested=false
                     end
                     if autoJoinCandidateIndex>#autoJoinCandidates then
-                        queryStatus='Smart Auto Join: no untried eligible candidates; waiting for next feed refresh'
+                        queryStatus='Auto Join: no eligible servers; waiting for next feed refresh'
                         autoJoinCandidates={}
                         autoJoinCandidateIndex=1
                         return
@@ -1428,7 +1424,7 @@ local function createFinder(D)
                     if not target or tonumber(target.expiresAt or 0)<=now then
                         autoJoinCandidateIndex+=1
                         autoJoinRetryRequested=true
-                        queryStatus='Smart Auto Join: report expired; trying next server'
+                        queryStatus='Auto Join: report expired; trying next server'
                         return
                     end
                     local attemptKey=tostring(target.jobId)..':'..tostring(target.uid)
@@ -1440,7 +1436,7 @@ local function createFinder(D)
                     end
                     autoJoinAttempted[attemptKey]=true
                     autoJoinCooldown[targetJob]=os.clock()+AUTO_JOIN_SERVER_COOLDOWN
-                    queryStatus='Smart Auto Join: trying rank '..tostring(target.rank or target.localTier or target.tier)..' candidate #'..tostring(autoJoinCandidateIndex)..' ('..tostring(target.rate)..'/s)'
+                    queryStatus='Auto Join: trying first available server ('..tostring(target.rate)..'/s)'
                     local claim,claimError=network(config.endpoint..'/v1/join','POST',
                         Http:JSONEncode({placeId=target.placeId,jobId=target.jobId,uid=target.uid,reporterId=reporterId,userId=D.player.UserId}),
                         headers())
@@ -1450,7 +1446,7 @@ local function createFinder(D)
                         end
                         autoJoinCandidateIndex+=1
                         autoJoinRetryRequested=true
-                        queryStatus='Smart Auto Join: server unavailable; trying next candidate'
+                        queryStatus='Auto Join: server unavailable; trying next server'
                         return
                     end
                     local joinExpiry=math.min(tonumber(target.expiresAt) or math.huge,tonumber(claim.expiresAt) or math.huge)
@@ -1465,7 +1461,7 @@ local function createFinder(D)
                         return
                     end
                     joining=true
-                    queryStatus='Smart Auto Join: joining server #'..tostring(autoJoinCandidateIndex)
+                    queryStatus='Auto Join: joining server #'..tostring(autoJoinCandidateIndex)
                     queueAutoExecute()
                     D.saveGuiBeforeTeleport()
                     D.stopFarm()
@@ -1476,7 +1472,7 @@ local function createFinder(D)
                     if not teleported then
                         joining=false
                         autoJoinCandidateIndex+=1;autoJoinRetryRequested=true
-                        queryStatus='Smart Auto Join: teleport failed; trying next server'
+                        queryStatus='Auto Join: teleport failed; trying next server'
                         warn('UNKNOWN Smart Auto Join teleport:',teleportError)
                     end
                 end)
@@ -1485,7 +1481,7 @@ local function createFinder(D)
                     autoJoinCandidateIndex+=1
                     autoJoinRetryRequested=true
                     autoJoinNextRefreshAt=math.min(autoJoinNextRefreshAt,os.clock()+1)
-                    queryStatus='Smart Auto Join error: '..tostring(err)
+                    queryStatus='Auto Join error: '..tostring(err)
                     warn('UNKNOWN Smart Auto Join:',err)
                 end
                 autoJoinBusy=false
