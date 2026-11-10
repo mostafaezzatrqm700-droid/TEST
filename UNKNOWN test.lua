@@ -1069,8 +1069,10 @@ local function createFinder(D)
     local autoJoinNextRefreshAt=0
     local autoJoinFeedStamp=-1
     local autoJoinClockOffset=0
+    local autoJoinSearchStartedAt=nil
     local AUTO_JOIN_MIN_RANK=7
     local AUTO_JOIN_REFRESH_SECONDS=1
+    local AUTO_JOIN_SEARCH_DELAY_SECONDS=5
     local AUTO_JOIN_SERVER_COOLDOWN=0.5
     local AUTO_JOIN_ALLOWED_RANKS={[7]=true,[8]=true,[9]=true,[10]=true}
     local autoJoinButton=D.make('TextButton',{Name='SmartAutoJoin',Text='SMART AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-52),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(200,45,45),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
@@ -1114,6 +1116,7 @@ local function createFinder(D)
         autoJoinEnabled=not autoJoinEnabled
         autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false
         autoJoinAttempted={};autoJoinCooldown={};autoJoinFeed={};autoJoinFeedAt=-math.huge;autoJoinNextRefreshAt=0;autoJoinFeedStamp=-1
+        autoJoinSearchStartedAt=nil
         if autoJoinEnabled then feedAt=-math.huge end
         paintAutoJoin()
         queryStatus=autoJoinEnabled and 'Smart Auto Join enabled: monitoring and ranking all available pages' or 'Smart Auto Join disabled'
@@ -1384,6 +1387,7 @@ local function createFinder(D)
                         local refreshed,message=refreshAutoJoinFeed()
                         if refreshed then
                             autoJoinNextRefreshAt=autoJoinFeedAt+AUTO_JOIN_REFRESH_SECONDS
+                            if autoJoinSearchStartedAt==nil then autoJoinSearchStartedAt=os.clock() end
                             queryStatus=message
                             autoJoinCandidates={}
                             autoJoinCandidateIndex=1
@@ -1392,6 +1396,11 @@ local function createFinder(D)
                             queryStatus='Smart Auto Join: '..tostring(message or 'feed refresh failed')
                             return
                         end
+                    end
+                    if autoJoinSearchStartedAt and os.clock()-autoJoinSearchStartedAt<AUTO_JOIN_SEARCH_DELAY_SECONDS then
+                        local remaining=AUTO_JOIN_SEARCH_DELAY_SECONDS-(os.clock()-autoJoinSearchStartedAt)
+                        queryStatus='Smart Auto Join: searching for a better server ('..string.format('%.1f',remaining)..'s)'
+                        return
                     end
                     for job,untilAt in pairs(autoJoinCooldown) do
                         if untilAt<=nowClock then autoJoinCooldown[job]=nil end
