@@ -636,6 +636,11 @@ local function createFinder(D)
     local status=D.label(panel,'Connectingâ¦',UDim2.fromOffset(14,52),UDim2.new(1,-28,0,48),Color3.fromRGB(210,218,240),14)
     status.Visible=true
     status.TextWrapped=true
+    local autoJoinStatus=D.label(panel,'AUTO JOIN: OFF',UDim2.fromOffset(14,86),UDim2.new(1,-28,0,20),Color3.fromRGB(115,220,255),11)
+    autoJoinStatus.Name='AutoJoinStatus'
+    autoJoinStatus.TextTruncate=Enum.TextTruncate.AtEnd
+    autoJoinStatus.TextXAlignment=Enum.TextXAlignment.Left
+    autoJoinStatus.ZIndex=5
     local discordSubtitle=D.label(panel,DISCORD,UDim2.fromOffset(10,27),UDim2.fromOffset(205,14),Color3.new(1,1,1),11)
     discordSubtitle.TextSize=11
     discordSubtitle.TextScaled=true;discordSubtitle.TextWrapped=false;discordSubtitle.Visible=true
@@ -686,7 +691,7 @@ local function createFinder(D)
     resetTimer.TextTruncate=Enum.TextTruncate.AtEnd
     resetTimer.Active=false
     local refreshing=false
-    local list=D.make('ScrollingFrame',{Position=UDim2.fromOffset(14,92),Size=UDim2.new(1,-16,1,-278),BackgroundTransparency=1,BorderSizePixel=0,AutomaticCanvasSize=Enum.AutomaticSize.None,CanvasSize=UDim2.new(),ScrollBarThickness=6,ScrollBarImageColor3=Color3.fromRGB(137,140,150),ScrollBarImageTransparency=0},panel)
+    local list=D.make('ScrollingFrame',{Position=UDim2.fromOffset(14,112),Size=UDim2.new(1,-16,1,-298),BackgroundTransparency=1,BorderSizePixel=0,AutomaticCanvasSize=Enum.AutomaticSize.None,CanvasSize=UDim2.new(),ScrollBarThickness=6,ScrollBarImageColor3=Color3.fromRGB(137,140,150),ScrollBarImageTransparency=0},panel)
     
     -- UNKNOWN SPACE THEME PATCH v1 (visual-only)
     local SpaceTheme = {
@@ -2610,6 +2615,8 @@ local function createFinder(D)
     task.spawn(function()
         while active do
             status.Text=joining and 'Joining serverâ¦' or (tostring(reportStatus)..'\n'..tostring(queryStatus))
+            autoJoinStatus.Text=autoJoinEnabled and (tostring(queryStatus):find('Auto Join:',1,true) and tostring(queryStatus) or 'AUTO JOIN: ACTIVE') or 'AUTO JOIN: OFF'
+            autoJoinStatus.TextColor3=autoJoinEnabled and Color3.fromRGB(115,220,255) or Color3.fromRGB(170,175,190)
             local cycle=cycleInfo()
             if cycle then
                 local seconds=math.max(0,math.ceil(cycle.remaining))
