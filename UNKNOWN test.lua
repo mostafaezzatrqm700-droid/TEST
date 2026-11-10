@@ -2081,11 +2081,15 @@ local function createFinder(D)
                 if not isHalloweenEgg(e) and (e.jobId~=game.JobId or e.unavailable) and (e.rate or 0)>=minRate and (e.rank or 0)>=minRank and type(e.expiresAt)=='number' and e.expiresAt>now then source[#source+1]=e;seen[e.key]=true end
             end
         end
+        local fieldStateByUid={}
         if metadata and metadata.resetAt and metadata.resetAt>gameNow then
             local states={}
-            for _,state in ipairs(metadata.states or {}) do states[state.uid]=state.state end
+            for _,state in ipairs(metadata.states or {}) do
+                states[state.uid]=state.state
+                fieldStateByUid[tostring(state.uid)]=state.state
+            end
             for key,e in pairs(retainedLocal) do
-                if not isHalloweenEgg(e) and (not states[e.uid] or states[e.uid]=='Claimed') then
+                if not isHalloweenEgg(e) and (not states[e.uid] or states[e.uid]=='Claimed' or states[e.uid]=='Carried') then
                     e.unavailable=true;e.full=true;e.takenConfirmed=true
                     stateByKey[key]=e
                     if not othersOnly and not seen[key] and e.rate>=minRate and (e.localTier or 0)>=minRank then source[#source+1]=e;seen[key]=true end
@@ -2100,7 +2104,9 @@ local function createFinder(D)
                     if state and state.unavailable and top5Cache[key] then top5Cache[key].unavailable=true;top5Cache[key].full=true end
                     if not seen[key] and not retiredLocal[key] and not (state and state.unavailable) then
                         seen[key]=true
-                        source[#source+1]={key=key,uid=tostring(e.uid or e.key),name=e.name,rate=e.rate or 0,missingRate=e.rate==nil,scale=e.scale,weight=e.weight,icon=e.icon,rarity=e.rarity,mutations=e.mutationText,traitsKnown=e.traitsKnown~=false,area=e.areaKey or e.area,model=e.model,isLocal=true,localTier=e.tier,full=not othersOnly and state and state.full or false,source=e.isEvent and 'event' or 'field',estimated=e.estimated or e.unmutatedRate~=nil,placeId=game.PlaceId,jobId=game.JobId,expiresAt=now+5000,seenAt=0,spawnedAt=not e.isEvent and localCycle and localCycle.respawnAt or nil,spawnTimeKnown=not e.isEvent and localCycle~=nil and type(localCycle.respawnAt)=='number'}
+                        local localState=fieldStateByUid[tostring(e.uid or e.key)]
+                    local taken=localState=='Carried' or localState=='Claimed'
+                    source[#source+1]={key=key,uid=tostring(e.uid or e.key),name=e.name,rate=e.rate or 0,missingRate=e.rate==nil,scale=e.scale,weight=e.weight,icon=e.icon,rarity=e.rarity,mutations=e.mutationText,traitsKnown=e.traitsKnown~=false,area=e.areaKey or e.area,model=e.model,isLocal=true,localTier=e.tier,full=taken or (not othersOnly and state and state.full or false),unavailable=taken,takenConfirmed=taken,source=e.isEvent and 'event' or 'field',estimated=e.estimated or e.unmutatedRate~=nil,placeId=game.PlaceId,jobId=game.JobId,expiresAt=now+5000,seenAt=0,spawnedAt=not e.isEvent and localCycle and localCycle.respawnAt or nil,spawnTimeKnown=not e.isEvent and localCycle~=nil and type(localCycle.respawnAt)=='number'}
                         if metadata and metadata.resetAt and not e.isEvent then
                             local saved=table.clone(source[#source]);saved.expiresAt=now+metadata.resetAt-gameNow-2000;saved.localTier=e.tier
                             retainedLocal[key]=saved
