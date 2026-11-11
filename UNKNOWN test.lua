@@ -3078,6 +3078,17 @@ local function run()
         end
 
         local function moveToListedEgg(uid)
+            local movementControls=nil
+            local controlsDisabled=false
+            local function restoreMovementControls()
+                if controlsDisabled and movementControls then
+                    controlsDisabled=false
+                    pcall(function()
+                        movementControls:Enable()
+                    end)
+                end
+            end
+
             local ok,err=pcall(function()
                 local character=player.Character
                 local humanoid=character and character:FindFirstChildOfClass('Humanoid')
@@ -3116,6 +3127,27 @@ local function run()
                         pickupPos=hitbox.Position
                     end
                 end
+
+                -- Stop the mobile/keyboard PlayerModule from sending zero-movement input
+                -- every frame while MoveTo is controlling the character.
+                local playerScripts=player:WaitForChild('PlayerScripts',5)
+                local playerModule=playerScripts and playerScripts:WaitForChild('PlayerModule',5)
+                if not playerModule then
+                    error('PlayerModule was not available; cannot safely control automatic walking')
+                end
+                local moduleOk,moduleOrError=pcall(require,playerModule)
+                if not moduleOk then
+                    error('Could not load PlayerModule controls: '..tostring(moduleOrError))
+                end
+                local controlsOk,controlsOrError=pcall(function()
+                    return moduleOrError:GetControls()
+                end)
+                if not controlsOk or not controlsOrError then
+                    error('Could not access PlayerModule controls: '..tostring(controlsOrError))
+                end
+                movementControls=controlsOrError
+                movementControls:Disable()
+                controlsDisabled=true
 
                 local PathfindingService=game:GetService('PathfindingService')
                 local reached=false
@@ -3199,6 +3231,9 @@ local function run()
                     error(lastPathError)
                 end
 
+                -- Restore the player's normal controls as soon as automatic walking ends.
+                restoreMovementControls()
+
                 -- Re-check the live record and distance immediately before asking the server to carry it.
                 local current=readEgg()
                 if not current or tostring(current.Uid)~=eggUid
@@ -3234,6 +3269,8 @@ local function run()
                     error('Server refused the egg pickup: '..tostring(reason or accepted or 'unknown reason'))
                 end
             end)
+            -- Always restore normal controls, including when pathfinding or pickup fails.
+            restoreMovementControls()
             if not ok then
                 warn('[UNKNOWN SERVER EGGS STEAL] '..tostring(err))
                 return false,tostring(err)
