@@ -3015,6 +3015,52 @@ local function run()
             return string.format('%.1fM',value/1e6)
         end
 
+        local function moveToListedEgg(uid)
+            local ok,err=pcall(function()
+                local character,humanoid,root=currentRoot()
+                if not root then error('Character is not ready') end
+
+                local snapshot=EggState.ReadFieldEggs()
+                if type(snapshot)~='table' or type(snapshot.Records)~='table' then
+                    error('Could not read current server eggs')
+                end
+
+                local record
+                for key,value in pairs(snapshot.Records) do
+                    if value and tostring(value.Uid or key)==tostring(uid) then
+                        record=value
+                        break
+                    end
+                end
+
+                if not record or not record.Uid or typeof(record.BottomCFrame)~='CFrame' then
+                    error('This egg is no longer available')
+                end
+                if (record.State~=States.Slot and record.State~=States.Dropped) or record.CarrierUserId~=nil then
+                    error('This egg cannot be stolen right now')
+                end
+
+                local eggUid=tostring(record.Uid)
+                local eggModel=workspace:FindFirstChild('AreaEggSlotsClient')
+                eggModel=eggModel and eggModel:FindFirstChild(eggUid)
+                local pickupPos=record.BottomCFrame.Position
+                if eggModel then
+                    local hitbox=eggModel:FindFirstChild('Hitbox',true) or eggModel:FindFirstChild('SmartPromptPart',true)
+                    if hitbox and hitbox:IsA('BasePart') then
+                        pickupPos=hitbox.Position
+                    end
+                end
+
+                -- Same movement-only behavior as the existing Auto Steal step.
+                root.CFrame=CFrame.new(pickupPos+Vector3.new(0,2.5,0))
+            end)
+            if not ok then
+                warn('[UNKNOWN SERVER EGGS STEAL] '..tostring(err))
+                return false,tostring(err)
+            end
+            return true
+        end
+
         local lastSignature=nil
         local function renderServerEggs()
             local filtered={}
@@ -3056,11 +3102,11 @@ local function run()
                     LayoutOrder=index
                 },scroll)
                 make('UICorner',{CornerRadius=UDim.new(0,5)},row)
-                label(row,tostring(entry.name or 'Unknown Egg'),UDim2.fromOffset(9,5),UDim2.new(1,-112,0,28),Color3.fromRGB(240,243,250),12)
-                local valueLabel=make('TextLabel',{
+                label(row,tostring(entry.name or 'Unknown Egg'),UDim2.fromOffset(9,5),UDim2.new(1,-160,0,28),Color3.fromRGB(240,243,250),12)
+                make('TextLabel',{
                     AnchorPoint=Vector2.new(1,0),
-                    Position=UDim2.new(1,-8,0,5),
-                    Size=UDim2.fromOffset(100,28),
+                    Position=UDim2.new(1,-75,0,5),
+                    Size=UDim2.fromOffset(68,28),
                     BackgroundTransparency=1,
                     Text=formatServerEggValue(entry.rate),
                     TextColor3=Color3.fromRGB(105,225,145),
@@ -3068,6 +3114,39 @@ local function run()
                     Font=Enum.Font.GothamBold,
                     TextXAlignment=Enum.TextXAlignment.Right
                 },row)
+
+                local stealButton=make('TextButton',{
+                    Name='StealButton',
+                    AnchorPoint=Vector2.new(1,0.5),
+                    Position=UDim2.new(1,-6,0.5,0),
+                    Size=UDim2.fromOffset(60,27),
+                    BackgroundColor3=Color3.fromRGB(45,115,80),
+                    BorderSizePixel=0,
+                    Text='STEAL',
+                    TextColor3=Color3.fromRGB(255,255,255),
+                    TextSize=11,
+                    Font=Enum.Font.GothamBold,
+                    AutoButtonColor=true
+                },row)
+                make('UICorner',{CornerRadius=UDim.new(0,5)},stealButton)
+                stealButton.Activated:Connect(function()
+                    if stealButton:GetAttribute('Busy') then return end
+                    stealButton:SetAttribute('Busy',true)
+                    stealButton.Text='...'
+                    task.spawn(function()
+                        local moved,message=moveToListedEgg(entry.uid)
+                        if stealButton.Parent then
+                            stealButton:SetAttribute('Busy',false)
+                            if moved then
+                                stealButton.Text='STEAL'
+                            else
+                                stealButton.Text='RETRY'
+                                stealButton.BackgroundColor3=Color3.fromRGB(135,65,65)
+                                stealButton:SetAttribute('ErrorMessage',message)
+                            end
+                        end
+                    end)
+                end)
             end
         end
 
