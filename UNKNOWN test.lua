@@ -2775,8 +2775,8 @@ local function createFinder(D)
 
     fitFinder()
     panel.Visible=true
-    local failed=Teleports.TeleportInitFailed:Connect(function(who,_,message)
-        if who==D.player then
+    Teleports.TeleportInitFailed:Connect(function(who,_,message)
+        if active and who==D.player then
             local failureText=tostring(message or 'Teleport failed')
             local lowerFailure=failureText:lower()
             local serverIsFull=lowerFailure:find('full',1,true)~=nil
@@ -2827,7 +2827,7 @@ local function createFinder(D)
             render()
         end
     end)
-    D.gui.Destroying:Connect(function() active=false; failed:Disconnect();if localHighlight then localHighlight:Destroy() end end)
+    D.gui.Destroying:Connect(function() active=false;if localHighlight then localHighlight:Destroy() end end)
     task.spawn(function()
         local lastReport=-math.huge
         local lastReportAttempt=-math.huge
