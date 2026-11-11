@@ -1025,18 +1025,30 @@ local function createFinder(D)
         else
             local y=0
             for i,item in ipairs(joinErrors) do
-                local row=D.make('Frame',{Size=UDim2.new(1,-8,0,76),BackgroundColor3=Color3.fromRGB(39,23,48),BorderSizePixel=0,LayoutOrder=i,ZIndex=82},errorList)
+                local row=D.make('Frame',{Size=UDim2.new(1,-8,0,88),BackgroundColor3=Color3.fromRGB(39,23,48),BorderSizePixel=0,LayoutOrder=i,ZIndex=82},errorList)
                 D.make('UICorner',{CornerRadius=UDim.new(0,5)},row)
-                local heading=D.label(row,'['..item.time..'] '..item.source..' / '..item.stage,UDim2.fromOffset(8,4),UDim2.new(1,-82,0,22),Color3.fromRGB(255,170,190),12)
+                local heading=D.label(row,'['..item.time..'] '..item.source..' / '..item.stage,UDim2.fromOffset(8,4),UDim2.new(1,-16,0,22),Color3.fromRGB(255,170,190),12)
                 heading.ZIndex=83
                 heading.TextXAlignment=Enum.TextXAlignment.Left
-                local copyErrorButton=D.make('TextButton',{Name='CopyErrorButton',Text='COPY',Position=UDim2.new(1,-66,0,4),Size=UDim2.fromOffset(58,22),BackgroundColor3=Color3.fromRGB(75,105,145),TextColor3=Color3.new(1,1,1),TextSize=10,ZIndex=84},row)
-                D.make('UICorner',{CornerRadius=UDim.new(0,4)},copyErrorButton)
-                local body=D.label(row,item.message,UDim2.fromOffset(8,27),UDim2.new(1,-16,1,-31),Color3.fromRGB(245,235,250),11)
+                local body=D.label(row,item.message,UDim2.fromOffset(8,29),UDim2.new(1,-112,1,-34),Color3.fromRGB(245,235,250),11)
                 body.ZIndex=83
                 body.TextWrapped=true
                 body.TextYAlignment=Enum.TextYAlignment.Top
                 local fullError='['..item.time..'] '..item.source..' / '..item.stage..'\n'..item.message
+                local copyErrorButton=Instance.new('TextButton')
+                copyErrorButton.Name='CopyErrorButton'
+                copyErrorButton.Text='COPY ERROR'
+                copyErrorButton.Position=UDim2.new(1,-104,0.5,-17)
+                copyErrorButton.Size=UDim2.fromOffset(96,34)
+                copyErrorButton.BackgroundColor3=Color3.fromRGB(65,115,175)
+                copyErrorButton.TextColor3=Color3.new(1,1,1)
+                copyErrorButton.Font=Enum.Font.GothamBold
+                copyErrorButton.TextSize=13
+                copyErrorButton.ZIndex=90
+                copyErrorButton.Parent=row
+                local copyCorner=Instance.new('UICorner')
+                copyCorner.CornerRadius=UDim.new(0,6)
+                copyCorner.Parent=copyErrorButton
                 copyErrorButton.Activated:Connect(function()
                     local copied=false
                     pcall(function()
@@ -1049,19 +1061,13 @@ local function createFinder(D)
                         end
                     end)
                     if copied then
-                        copyErrorButton.Text='COPIED'
-                        copyErrorButton.BackgroundColor3=Color3.fromRGB(55,135,85)
-                        task.delay(1.5,function()
-                            if copyErrorButton and copyErrorButton.Parent then
-                                copyErrorButton.Text='COPY'
-                                copyErrorButton.BackgroundColor3=Color3.fromRGB(75,105,145)
-                            end
-                        end)
+                        copyErrorButton.Text='COPIED!'
+                        copyErrorButton.BackgroundColor3=Color3.fromRGB(45,145,85)
                     else
-                        copyErrorButton.Text='N/A'
+                        copyErrorButton.Text='UNAVAILABLE'
                     end
                 end)
-                y+=82
+                y+=94
             end
             errorList.CanvasSize=UDim2.fromOffset(0,y)
             errorList.CanvasPosition=Vector2.new(0,math.max(0,y-errorList.AbsoluteSize.Y))
