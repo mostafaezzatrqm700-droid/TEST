@@ -2918,6 +2918,181 @@ local function run()
         return valid(value) and value or nil
     end
     local lastScan=0
+    do
+        local oldServerEggGui=parent:FindFirstChild('UNKNOWN_SERVER_EGGS')
+        if oldServerEggGui then oldServerEggGui:Destroy() end
+
+        local serverEggGui=make('ScreenGui',{
+            Name='UNKNOWN_SERVER_EGGS',
+            ResetOnSpawn=false,
+            IgnoreGuiInset=true,
+            DisplayOrder=1300,
+            ZIndexBehavior=Enum.ZIndexBehavior.Sibling
+        },parent)
+
+        local toggle=make('TextButton',{
+            Name='ToggleButton',
+            AnchorPoint=Vector2.new(1,0.5),
+            Position=UDim2.new(1,-14,0.72,0),
+            Size=UDim2.fromOffset(132,38),
+            BackgroundColor3=Color3.fromRGB(18,20,26),
+            BorderSizePixel=0,
+            Text='SERVER EGGS',
+            TextColor3=Color3.fromRGB(255,255,255),
+            TextSize=13,
+            Font=Enum.Font.GothamBold,
+            AutoButtonColor=true
+        },serverEggGui)
+        make('UICorner',{CornerRadius=UDim.new(0,7)},toggle)
+        make('UIStroke',{Color=Color3.fromRGB(95,170,255),Thickness=1.4},toggle)
+
+        local window=make('Frame',{
+            Name='EggWindow',
+            AnchorPoint=Vector2.new(0.5,0.5),
+            Position=UDim2.fromScale(0.5,0.5),
+            Size=UDim2.new(0.86,0,0.58,0),
+            BackgroundColor3=Color3.fromRGB(18,20,26),
+            BorderSizePixel=0,
+            Visible=false
+        },serverEggGui)
+        make('UICorner',{CornerRadius=UDim.new(0,9)},window)
+        make('UIStroke',{Color=Color3.fromRGB(95,170,255),Thickness=1.5},window)
+
+        local top=make('Frame',{
+            Name='Header',
+            Position=UDim2.fromOffset(1,1),
+            Size=UDim2.new(1,-2,0,43),
+            BackgroundColor3=Color3.fromRGB(8,10,15),
+            BorderSizePixel=0
+        },window)
+        make('UICorner',{CornerRadius=UDim.new(0,8)},top)
+        label(top,'SERVER EGGS  |  MIN 100M',UDim2.fromOffset(13,7),UDim2.new(1,-65,0,28),Color3.fromRGB(235,242,255),15)
+
+        local close=make('TextButton',{
+            Name='Close',
+            AnchorPoint=Vector2.new(1,0),
+            Position=UDim2.new(1,-8,0,7),
+            Size=UDim2.fromOffset(29,29),
+            BackgroundColor3=Color3.fromRGB(42,45,54),
+            BorderSizePixel=0,
+            Text='X',
+            TextColor3=Color3.fromRGB(255,255,255),
+            TextSize=14,
+            Font=Enum.Font.GothamBold
+        },top)
+        make('UICorner',{CornerRadius=UDim.new(0,6)},close)
+
+        local countLabel=label(window,'Loading local server eggs...',UDim2.fromOffset(13,51),UDim2.new(1,-26,0,22),Color3.fromRGB(175,190,210),12)
+        local scroll=make('ScrollingFrame',{
+            Name='EggList',
+            Position=UDim2.fromOffset(10,78),
+            Size=UDim2.new(1,-20,1,-88),
+            BackgroundColor3=Color3.fromRGB(12,14,19),
+            BorderSizePixel=0,
+            ScrollBarThickness=4,
+            ScrollBarImageColor3=Color3.fromRGB(105,155,220),
+            CanvasSize=UDim2.new(0,0,0,0)
+        },window)
+        make('UICorner',{CornerRadius=UDim.new(0,6)},scroll)
+        local layout=make('UIListLayout',{
+            Padding=UDim.new(0,5),
+            SortOrder=Enum.SortOrder.LayoutOrder
+        },scroll)
+        make('UIPadding',{
+            PaddingTop=UDim.new(0,6),
+            PaddingBottom=UDim.new(0,6),
+            PaddingLeft=UDim.new(0,6),
+            PaddingRight=UDim.new(0,6)
+        },scroll)
+        layout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
+            scroll.CanvasSize=UDim2.fromOffset(0,layout.AbsoluteContentSize.Y+12)
+        end)
+
+        local function formatServerEggValue(value)
+            value=tonumber(value) or 0
+            if value>=1e12 then return string.format('%.2fT',value/1e12) end
+            if value>=1e9 then return string.format('%.2fB',value/1e9) end
+            return string.format('%.1fM',value/1e6)
+        end
+
+        local lastSignature=nil
+        local function renderServerEggs()
+            local filtered={}
+            for _,entry in ipairs(latestEntries) do
+                local rate=tonumber(entry.rate)
+                if rate and rate>=100000000 then
+                    table.insert(filtered,entry)
+                end
+            end
+            table.sort(filtered,function(a,b)
+                return (tonumber(a.rate) or 0)>(tonumber(b.rate) or 0)
+            end)
+
+            local signatureParts={}
+            for _,entry in ipairs(filtered) do
+                signatureParts[#signatureParts+1]=tostring(entry.uid)..':'..tostring(entry.rate)
+            end
+            local signature=table.concat(signatureParts,'|')
+            countLabel.Text=string.format('LOCAL SERVER  •  %d egg(s)  •  Minimum 100M',#filtered)
+            if signature==lastSignature then return end
+            lastSignature=signature
+
+            for _,child in ipairs(scroll:GetChildren()) do
+                if child:IsA('Frame') then child:Destroy() end
+            end
+
+            if #filtered==0 then
+                local empty=label(scroll,'No eggs worth 100M or more in this server.',UDim2.fromOffset(8,0),UDim2.new(1,-16,0,38),Color3.fromRGB(175,185,200),12)
+                empty.LayoutOrder=1
+                return
+            end
+
+            for index,entry in ipairs(filtered) do
+                local row=make('Frame',{
+                    Name='Egg_'..tostring(entry.uid),
+                    Size=UDim2.new(1,-2,0,39),
+                    BackgroundColor3=Color3.fromRGB(27,31,40),
+                    BorderSizePixel=0,
+                    LayoutOrder=index
+                },scroll)
+                make('UICorner',{CornerRadius=UDim.new(0,5)},row)
+                label(row,tostring(entry.name or 'Unknown Egg'),UDim2.fromOffset(9,5),UDim2.new(1,-112,0,28),Color3.fromRGB(240,243,250),12)
+                local valueLabel=make('TextLabel',{
+                    AnchorPoint=Vector2.new(1,0),
+                    Position=UDim2.new(1,-8,0,5),
+                    Size=UDim2.fromOffset(100,28),
+                    BackgroundTransparency=1,
+                    Text=formatServerEggValue(entry.rate),
+                    TextColor3=Color3.fromRGB(105,225,145),
+                    TextSize=12,
+                    Font=Enum.Font.GothamBold,
+                    TextXAlignment=Enum.TextXAlignment.Right
+                },row)
+            end
+        end
+
+        toggle.Activated:Connect(function()
+            window.Visible=not window.Visible
+            if window.Visible then renderServerEggs() end
+        end)
+        close.Activated:Connect(function()
+            window.Visible=false
+        end)
+
+        task.spawn(function()
+            while alive and serverEggGui.Parent do
+                if window.Visible then
+                    local ok,err=pcall(renderServerEggs)
+                    if not ok then countLabel.Text='Unable to read local server eggs' end
+                end
+                task.wait(0.5)
+            end
+        end)
+
+        gui.Destroying:Connect(function()
+            if serverEggGui and serverEggGui.Parent then serverEggGui:Destroy() end
+        end)
+    end
     createFinder({gui=gui,localPanel={Visible=false},player=player,make=make,label=label,entries=function() return os.clock()-lastScan<10 and latestEntries or {} end,metadata=function() return latestMetadata end,ready=function() return lastScan>0 and os.clock()-lastScan<10 end,parseValue=parseValue,money=money,stopFarm=function() end,getAutoSteal=function() return autoStealEnabled end,setAutoSteal=function(value) autoStealEnabled=value==true end,stopScript=function() alive=false; if errorConnection then pcall(function() errorConnection:Disconnect() end);errorConnection=nil end; if errorGui and errorGui.Parent then pcall(function() errorGui:Destroy() end) end; if gui and gui.Parent then pcall(function() gui:Destroy() end) end end})
     gui:SetAttribute("UNKNOWN_READY", true)
     local notified={}
