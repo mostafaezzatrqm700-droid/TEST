@@ -2744,6 +2744,7 @@ local function launchUnknown()
         runtimeEnv[runningJob] = nil
     end
 
+    if type(runtimeEnv) == "table" then runtimeEnv.__UNKNOWN_START_ERROR = nil end
     local loadOk, loadError = pcall(startUnknown)
     if not loadOk then
         if type(runtimeEnv) == "table" and runtimeEnv[runningJob] == game.JobId then
