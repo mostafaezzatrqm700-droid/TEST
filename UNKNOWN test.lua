@@ -3131,105 +3131,15 @@ local function run()
                     end
                 end
 
-                -- Find a clear, grounded approach point beside the egg.
-                -- Never teleport directly into the egg/nest or an unverified location.
-                local characterExclusions={character}
-                if eggModel then table.insert(characterExclusions,eggModel) end
-
-                local rayParams=RaycastParams.new()
-                rayParams.FilterType=Enum.RaycastFilterType.Exclude
-                rayParams.FilterDescendantsInstances=characterExclusions
-                rayParams.IgnoreWater=true
-
-                local overlapParams=OverlapParams.new()
-                overlapParams.FilterType=Enum.RaycastFilterType.Exclude
-                overlapParams.FilterDescendantsInstances=characterExclusions
-                overlapParams.MaxParts=40
-
-                local offsets={
-                    Vector3.new(4.5,0,0),Vector3.new(-4.5,0,0),
-                    Vector3.new(0,0,4.5),Vector3.new(0,0,-4.5),
-                    Vector3.new(3.2,0,3.2),Vector3.new(-3.2,0,3.2),
-                    Vector3.new(3.2,0,-3.2),Vector3.new(-3.2,0,-3.2),
-                    Vector3.new(6.5,0,0),Vector3.new(-6.5,0,0),
-                    Vector3.new(0,0,6.5),Vector3.new(0,0,-6.5),
-                    Vector3.new(8.5,0,0),Vector3.new(-8.5,0,0),
-                    Vector3.new(0,0,8.5),Vector3.new(0,0,-8.5),
-                    Vector3.new(6,0,6),Vector3.new(-6,0,6),
-                    Vector3.new(6,0,-6),Vector3.new(-6,0,-6),
-                    Vector3.new(11,0,0),Vector3.new(-11,0,0),
-                    Vector3.new(0,0,11),Vector3.new(0,0,-11)
-                }
-
-                local function isHazard(instance)
-                    local current=instance
-                    for _=1,4 do
-                        if not current then break end
-                        local name=string.lower(current.Name)
-                        if string.find(name,'kill',1,true)
-                            or string.find(name,'lava',1,true)
-                            or string.find(name,'void',1,true)
-                            or string.find(name,'damage',1,true)
-                            or string.find(name,'hazard',1,true)
-                            or string.find(name,'death',1,true)
-                            or string.find(name,'acid',1,true) then
-                            return true
-                        end
-                        current=current.Parent
-                    end
-                    return false
-                end
-
-                local safeCFrame=nil
-                local rayIgnore={}
-                local ground
-                local rayOrigin
-                for _,offset in ipairs(offsets) do
-                    local candidate=pickupPos+offset
-                    table.clear(rayIgnore)
-                    for _,excluded in ipairs(characterExclusions) do
-                        rayIgnore[#rayIgnore+1]=excluded
-                    end
-                    rayParams.FilterDescendantsInstances=rayIgnore
-                    rayOrigin=candidate+Vector3.new(0,60,0)
-                    ground=nil
-                    for _=1,10 do
-                        ground=workspace:Raycast(rayOrigin,Vector3.new(0,-180,0),rayParams)
-                        if not ground then break end
-                        if isHazard(ground.Instance) then ground=nil;break end
-                        if ground.Normal.Y>=0.65
-                            and (ground.Instance:IsA('Terrain')
-                                or (ground.Instance:IsA('BasePart') and ground.Instance.CanCollide)) then
-                            break
-                        end
-                        rayIgnore[#rayIgnore+1]=ground.Instance
-                        rayParams.FilterDescendantsInstances=rayIgnore
-                        ground=nil
-                    end
-                    if ground and ground.Normal.Y>=0.65 then
-                        local rootPosition=ground.Position+Vector3.new(0,humanoid.HipHeight+root.Size.Y*0.5+0.12,0)
-                        local bodyBox=CFrame.new(rootPosition+Vector3.new(0,1.5,0))
-                        local blockers=workspace:GetPartBoundsInBox(bodyBox,Vector3.new(2.4,3.5,2.4),overlapParams)
-                        local blocked=false
-                        for _,part in ipairs(blockers) do
-                            if part.CanCollide then blocked=true;break end
-                        end
-                        if not blocked then
-                            safeCFrame=CFrame.lookAt(rootPosition,Vector3.new(pickupPos.X,rootPosition.Y,pickupPos.Z))
-                            break
-                        end
-                    end
-                end
-
-                if not safeCFrame then
-                    error('No safe landing spot beside this egg; teleport cancelled')
-                end
-
+                -- Teleport directly to the egg location, slightly above it.
+                -- Keep the egg model excluded from the lookup; no nearby-floor search is needed.
+                local targetPosition=pickupPos+Vector3.new(0,2.5,0)
+                local targetCFrame=CFrame.new(targetPosition)
                 humanoid.Sit=false
                 humanoid.PlatformStand=false
                 root.AssemblyLinearVelocity=Vector3.zero
                 root.AssemblyAngularVelocity=Vector3.zero
-                character:PivotTo(safeCFrame)
+                character:PivotTo(targetCFrame)
                 root.AssemblyLinearVelocity=Vector3.zero
                 root.AssemblyAngularVelocity=Vector3.zero
             end)
