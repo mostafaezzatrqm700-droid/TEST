@@ -2387,7 +2387,7 @@ local function createFinder(D)
     local retiredLocal={}
     local render
     local rendering,renderPending,renderQueued=false,false,false
-    local function renderOnce()
+    sharedRuntime.__UNKNOWN_RENDER_ONCE=function()
         local passEpoch,passScope=queryEpoch,othersOnly
         local batchStarted=os.clock()
         local passDeadline=math.huge
@@ -2811,7 +2811,7 @@ local function createFinder(D)
         if not active then return end
         if rendering then renderPending=true;return end
         rendering=true
-        local ok,err=pcall(renderOnce)
+        local ok,err=pcall(sharedRuntime.__UNKNOWN_RENDER_ONCE)
         rendering=false
         if renderPending then renderPending=false;if not renderQueued and active then
             renderQueued=true
