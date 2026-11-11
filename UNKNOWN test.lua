@@ -1208,9 +1208,9 @@ local function createFinder(D)
         return 'Loading '..string.rep('.',math.floor(now/0.4)%3+1)
     end
     local aliveMessage=D.label(list,loadingText(os.clock()),UDim2.new(),UDim2.new(1,-10,0,40),nil,12)
-    local function network(url,method,body,headers,raw,immediate)
+    local function network(url,method,body,headers,raw)
         if type(requestFn)~='function' then return nil,'Executor HTTP POST unavailable' end
-        if not immediate then
+        if not url:find('/v1/join',1,true) then
             local queueDeadline=os.clock()+12
             while networkBusy and active and os.clock()<queueDeadline do task.wait(0.05) end
             if not active then return nil,'Finder is no longer active' end
@@ -1218,17 +1218,17 @@ local function createFinder(D)
             networkBusy=true
             networkTicket+=1
         elseif not active then return nil,'Finder is no longer active' end
-        local ticket=immediate and nil or networkTicket
+        local ticket=networkTicket
         local done,result=false,nil
         local worker=task.spawn(function()
             result=table.pack(pcall(requestFn,{Url=url,Method=method,Headers=headers or {},Body=body,Timeout=10}))
             done=true
-            if not immediate and networkTicket==ticket then networkBusy=false end
+            if not url:find('/v1/join',1,true) and networkTicket==ticket then networkBusy=false end
         end)
         local deadline=os.clock()+12
         while active and not done and os.clock()<deadline do task.wait(0.01) end
         if not done then
-            if not immediate and networkTicket==ticket then networkTicket+=1;networkBusy=false end
+            if not url:find('/v1/join',1,true) and networkTicket==ticket then networkTicket+=1;networkBusy=false end
             pcall(task.cancel,worker)
             return nil,'Network timeout'
         end
@@ -1247,7 +1247,6 @@ local function createFinder(D)
         if not ok then return nil,'Invalid JSON response' end
         return decoded
     end
-    
     -- Roblox public-server directory, independent of the Finder report feed.
     status.Size=UDim2.new(0.53,-14,0,24)
     status.TextSize=11
@@ -2681,7 +2680,7 @@ local function createFinder(D)
                     recordJoinError('JOIN','CONNECTION','Finder is not connected.')
                     joining=false;joiningKey=nil;queryStatus='Finder not connected';return
                 end
-                local claim,claimError=network(config.endpoint..'/v1/join','POST',Http:JSONEncode({placeId=entry.placeId,jobId=entry.jobId,uid=entry.uid,reporterId=reporterId,userId=D.player.UserId}),headers(),false,true)
+                local claim,claimError=network(config.endpoint..'/v1/join','POST',Http:JSONEncode({placeId=entry.placeId,jobId=entry.jobId,uid=entry.uid,reporterId=reporterId,userId=D.player.UserId}),headers())
                 if claim and claim.allowed~=true and (claim.unavailable or claim.full) then
                     recordJoinError('JOIN','RESERVATION',claim.error or (claim.full and 'The target server is full.' or 'The egg is no longer available.'))
                     joining=false;joiningKey=nil;joinAttemptSerial+=1;entry.full=true;entry.unavailable=claim.unavailable==true;entry.takenConfirmed=claim.takenConfirmed==true;lastRender=nil
