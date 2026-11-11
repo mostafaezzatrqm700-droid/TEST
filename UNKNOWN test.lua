@@ -1253,8 +1253,9 @@ local function createFinder(D)
     -- Auto Join modes are mutually exclusive.
     local autoJoinEnabled=false
     local smartAutoJoinEnabled=false
-    local smartSelectionStartedAt=0
-    local SMART_AUTO_JOIN_WAIT_SECONDS=3
+    local smartBestCandidate=nil
+    local smartBestSince=0
+    local SMART_AUTO_JOIN_STABLE_SECONDS=1
     local autoJoinBusy=false
     local autoJoinCandidates={}
     local autoJoinCandidateIndex=1
@@ -1281,7 +1282,8 @@ local function createFinder(D)
         autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false
         autoJoinAttempted={};autoJoinCooldown={};autoJoinFeed={};autoJoinFeedAt=-math.huge
         autoJoinNextRefreshAt=0;autoJoinFeedStamp=-1
-        smartSelectionStartedAt=os.clock()
+        smartBestCandidate=nil
+        smartBestSince=0
         if autoJoinEnabled or smartAutoJoinEnabled then feedAt=-math.huge end
     end
     local function paintAutoJoin()
@@ -1304,7 +1306,7 @@ local function createFinder(D)
         if smartAutoJoinEnabled then autoJoinEnabled=false end
         resetAutoJoinState()
         paintAutoJoin()
-        queryStatus=smartAutoJoinEnabled and 'Smart Auto Join: collecting servers for 3 seconds' or 'Smart Auto Join disabled'
+        queryStatus=smartAutoJoinEnabled and 'Smart Auto Join: waiting for the best server to stay unchanged for 1 second' or 'Smart Auto Join disabled'
     end)
     local publicBroadcastConfig=nil
     local featureConfig=nil
@@ -1599,18 +1601,36 @@ local function createFinder(D)
                         autoJoinRetryRequested=false
                     end
                     if smartAutoJoinEnabled and autoJoinCandidateIndex==1 then
-                        local elapsed=os.clock()-smartSelectionStartedAt
-                        if elapsed<SMART_AUTO_JOIN_WAIT_SECONDS then
-                            queryStatus='Smart Auto Join: comparing servers ('..tostring(math.max(0,math.ceil(SMART_AUTO_JOIN_WAIT_SECONDS-elapsed)))..'s)'
-                            return
-                        end
-                        table.sort(autoJoinCandidates,function(a,b)
+                        local function isBetterSmartCandidate(a,b)
+                            if not a then return false end
+                            if not b then return true end
                             local ar,br=tonumber(a.rate) or 0,tonumber(b.rate) or 0
                             if ar~=br then return ar>br end
                             local ak,bk=tonumber(a.rank or a.localTier or a.tier) or 0,tonumber(b.rank or b.localTier or b.tier) or 0
                             if ak~=bk then return ak>bk end
                             return (tonumber(a.expiresAt) or 0)>(tonumber(b.expiresAt) or 0)
+                        end
+                        table.sort(autoJoinCandidates,function(a,b)
+                            return isBetterSmartCandidate(a,b)
                         end)
+                        local newestBest=autoJoinCandidates[1]
+                        if newestBest and isBetterSmartCandidate(newestBest,smartBestCandidate) then
+                            smartBestCandidate=newestBest
+                            smartBestSince=os.clock()
+                        end
+                        if not smartBestCandidate then
+                            queryStatus='Smart Auto Join: waiting for eligible servers'
+                            return
+                        end
+                        local stableFor=os.clock()-smartBestSince
+                        if stableFor<SMART_AUTO_JOIN_STABLE_SECONDS then
+                            queryStatus='Smart Auto Join: best server found; checking for better servers ('..tostring(math.max(0,math.ceil(SMART_AUTO_JOIN_STABLE_SECONDS-stableFor)))..'s)'
+                            return
+                        end
+                        autoJoinCandidates={smartBestCandidate}
+                        autoJoinCandidateIndex=1
+                        smartBestCandidate=nil
+                        smartBestSince=0
                     end
                     if autoJoinCandidateIndex>#autoJoinCandidates then
                         queryStatus=(smartAutoJoinEnabled and 'Smart Auto Join' or 'Auto Join')..': no eligible servers; waiting for next feed refresh'
