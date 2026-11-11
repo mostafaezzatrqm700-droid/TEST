@@ -2706,12 +2706,142 @@ local function run()
         task.wait(1)
     end
 end
+ -- UNKNOWN visible error reporter
+local errorGui, errorText
+local function showUnknownError(message, trace)
+    local details = tostring(message or "Unknown error")
+    if trace and tostring(trace) ~= "" then
+        details = details .. "\\n\\n" .. tostring(trace)
+    end
+    local ok = pcall(function()
+        local Players = game:GetService("Players")
+        local player = Players.LocalPlayer
+        local holder = player and player:FindFirstChildOfClass("PlayerGui")
+        if not holder then
+            local gethuiFn = gethui
+            if type(gethuiFn) == "function" then holder = gethuiFn() end
+        end
+        if not holder then
+            local CoreGui = game:GetService("CoreGui")
+            holder = CoreGui
+        end
+        if not errorGui or not errorGui.Parent then
+            errorGui = Instance.new("ScreenGui")
+            errorGui.Name = "UNKNOWN_ERROR_REPORT"
+            errorGui.ResetOnSpawn = false
+            errorGui.IgnoreGuiInset = true
+            errorGui.DisplayOrder = 100000
+            errorGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+            errorGui.Parent = holder
+
+            local panel = Instance.new("Frame")
+            panel.Name = "Panel"
+            panel.AnchorPoint = Vector2.new(0.5, 0.5)
+            panel.Position = UDim2.fromScale(0.5, 0.5)
+            panel.Size = UDim2.new(0.88, 0, 0.62, 0)
+            panel.BackgroundColor3 = Color3.fromRGB(15, 15, 19)
+            panel.BorderSizePixel = 0
+            panel.Parent = errorGui
+            local corner = Instance.new("UICorner")
+            corner.CornerRadius = UDim.new(0, 10)
+            corner.Parent = panel
+            local stroke = Instance.new("UIStroke")
+            stroke.Color = Color3.fromRGB(220, 65, 65)
+            stroke.Thickness = 1.5
+            stroke.Parent = panel
+
+            local title = Instance.new("TextLabel")
+            title.Name = "Title"
+            title.BackgroundTransparency = 1
+            title.Position = UDim2.new(0, 14, 0, 10)
+            title.Size = UDim2.new(1, -62, 0, 30)
+            title.Font = Enum.Font.GothamBold
+            title.Text = "UNKNOWN | SCRIPT ERROR"
+            title.TextColor3 = Color3.fromRGB(255, 90, 90)
+            title.TextSize = 16
+            title.TextXAlignment = Enum.TextXAlignment.Left
+            title.Parent = panel
+
+            local close = Instance.new("TextButton")
+            close.Name = "Close"
+            close.AnchorPoint = Vector2.new(1, 0)
+            close.Position = UDim2.new(1, -10, 0, 9)
+            close.Size = UDim2.fromOffset(30, 30)
+            close.BackgroundColor3 = Color3.fromRGB(55, 28, 30)
+            close.BorderSizePixel = 0
+            close.Font = Enum.Font.GothamBold
+            close.Text = "X"
+            close.TextColor3 = Color3.new(1, 1, 1)
+            close.TextSize = 14
+            close.Parent = panel
+            local closeCorner = Instance.new("UICorner")
+            closeCorner.CornerRadius = UDim.new(0, 6)
+            closeCorner.Parent = close
+            close.Activated:Connect(function() errorGui:Destroy(); errorGui=nil; errorText=nil end)
+
+            local hint = Instance.new("TextLabel")
+            hint.BackgroundTransparency = 1
+            hint.Position = UDim2.new(0, 14, 0, 43)
+            hint.Size = UDim2.new(1, -28, 0, 22)
+            hint.Font = Enum.Font.Gotham
+            hint.Text = "Copy or send this report to identify the problem."
+            hint.TextColor3 = Color3.fromRGB(175, 175, 185)
+            hint.TextSize = 11
+            hint.TextXAlignment = Enum.TextXAlignment.Left
+            hint.Parent = panel
+
+            local scroll = Instance.new("ScrollingFrame")
+            scroll.Name = "ErrorDetails"
+            scroll.Position = UDim2.new(0, 12, 0, 70)
+            scroll.Size = UDim2.new(1, -24, 1, -82)
+            scroll.BackgroundColor3 = Color3.fromRGB(8, 8, 11)
+            scroll.BorderSizePixel = 0
+            scroll.ScrollBarThickness = 5
+            scroll.CanvasSize = UDim2.new()
+            scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+            scroll.Parent = panel
+            local scrollCorner = Instance.new("UICorner")
+            scrollCorner.CornerRadius = UDim.new(0, 6)
+            scrollCorner.Parent = scroll
+
+            errorText = Instance.new("TextLabel")
+            errorText.Name = "Details"
+            errorText.BackgroundTransparency = 1
+            errorText.Position = UDim2.fromOffset(10, 8)
+            errorText.Size = UDim2.new(1, -20, 0, 0)
+            errorText.AutomaticSize = Enum.AutomaticSize.Y
+            errorText.Font = Enum.Font.Code
+            errorText.TextColor3 = Color3.fromRGB(245, 225, 225)
+            errorText.TextSize = 12
+            errorText.TextWrapped = true
+            errorText.TextXAlignment = Enum.TextXAlignment.Left
+            errorText.TextYAlignment = Enum.TextYAlignment.Top
+            errorText.Parent = scroll
+        end
+        if errorText and errorText.Parent then
+            errorText.Text = details
+        end
+    end)
+    if not ok then
+        warn("[UNKNOWN ERROR REPORT] " .. details)
+    end
+end
+
+-- Capture runtime errors raised by script threads as well as startup failures.
+pcall(function()
+    game:GetService("ScriptContext").Error:Connect(function(message, stackTrace, sourceScript)
+        local sourceName = sourceScript and sourceScript:GetFullName() or "Unknown source"
+        showUnknownError(message, tostring(stackTrace or "") .. "\\nSource: " .. sourceName)
+    end)
+end)
+
  task.spawn(function()
     local ok,err=pcall(run)
     if not ok then
         local env = _G
         pcall(function() if type(getgenv) == "function" then env = getgenv() end end)
         if type(env) == "table" then env.__UNKNOWN_START_ERROR = tostring(err) end
+        showUnknownError(err, "Startup function: run()")
         warn('NYX Finder startup:',err)
     end
 end)
