@@ -1250,8 +1250,11 @@ local function createFinder(D)
             queryStatus='Enter a value from 1B to 50B (example: 1.5B)'
         end
     end)
-    -- Auto Join: immediately tries the first eligible report in the latest feed.
+    -- Auto Join modes are mutually exclusive.
     local autoJoinEnabled=false
+    local smartAutoJoinEnabled=false
+    local smartSelectionStartedAt=0
+    local SMART_AUTO_JOIN_WAIT_SECONDS=3
     local autoJoinBusy=false
     local autoJoinCandidates={}
     local autoJoinCandidateIndex=1
@@ -1267,22 +1270,41 @@ local function createFinder(D)
     local AUTO_JOIN_REFRESH_SECONDS=1
     local AUTO_JOIN_SERVER_COOLDOWN=4
     local AUTO_JOIN_ALLOWED_RANKS={[7]=true,[8]=true,[9]=true,[10]=true}
-    local autoJoinButton=D.make('TextButton',{Name='AutoJoin',Text='AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-52),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(200,45,45),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
-    D.make('UICorner',{CornerRadius=UDim.new(0,6)},autoJoinButton)
-    autoJoinButton.TextScaled=true;autoJoinButton.TextWrapped=false
-    D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=14},autoJoinButton)
+    local autoJoinButton=D.make('TextButton',{Name='AutoJoin',Text='AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-52),Size=UDim2.new(0.5,-15,0,40),BackgroundColor3=Color3.fromRGB(200,45,45),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
+    local smartAutoJoinButton=D.make('TextButton',{Name='SmartAutoJoin',Text='SMART AUTO: OFF',Position=UDim2.new(0.5,5,1,-52),Size=UDim2.new(0.5,-15,0,40),BackgroundColor3=Color3.fromRGB(200,45,45),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
+    for _,button in ipairs({autoJoinButton,smartAutoJoinButton}) do
+        D.make('UICorner',{CornerRadius=UDim.new(0,6)},button)
+        button.TextScaled=true;button.TextWrapped=false
+        D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=14},button)
+    end
+    local function resetAutoJoinState()
+        autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false
+        autoJoinAttempted={};autoJoinCooldown={};autoJoinFeed={};autoJoinFeedAt=-math.huge
+        autoJoinNextRefreshAt=0;autoJoinFeedStamp=-1
+        smartSelectionStartedAt=os.clock()
+        if autoJoinEnabled or smartAutoJoinEnabled then feedAt=-math.huge end
+    end
     local function paintAutoJoin()
         autoJoinButton.Text=autoJoinEnabled and 'AUTO JOIN: ON' or 'AUTO JOIN: OFF'
         autoJoinButton.BackgroundColor3=autoJoinEnabled and Color3.fromRGB(30,155,85) or Color3.fromRGB(200,45,45)
+        smartAutoJoinButton.Text=smartAutoJoinEnabled and 'SMART AUTO: ON' or 'SMART AUTO: OFF'
+        smartAutoJoinButton.BackgroundColor3=smartAutoJoinEnabled and Color3.fromRGB(30,155,85) or Color3.fromRGB(200,45,45)
     end
     autoJoinButton.Activated:Connect(function()
         if not active then return end
         autoJoinEnabled=not autoJoinEnabled
-        autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false
-        autoJoinAttempted={};autoJoinCooldown={};autoJoinFeed={};autoJoinFeedAt=-math.huge;autoJoinNextRefreshAt=0;autoJoinFeedStamp=-1
-        if autoJoinEnabled then feedAt=-math.huge end
+        if autoJoinEnabled then smartAutoJoinEnabled=false end
+        resetAutoJoinState()
         paintAutoJoin()
-        queryStatus=autoJoinEnabled and 'Auto Join enabled: joining the first eligible server found' or 'Auto Join disabled'
+        queryStatus=autoJoinEnabled and 'Auto Join enabled: joining the first eligible server' or 'Auto Join disabled'
+    end)
+    smartAutoJoinButton.Activated:Connect(function()
+        if not active then return end
+        smartAutoJoinEnabled=not smartAutoJoinEnabled
+        if smartAutoJoinEnabled then autoJoinEnabled=false end
+        resetAutoJoinState()
+        paintAutoJoin()
+        queryStatus=smartAutoJoinEnabled and 'Smart Auto Join: collecting servers for 3 seconds' or 'Smart Auto Join disabled'
     end)
     local publicBroadcastConfig=nil
     local featureConfig=nil
@@ -1530,7 +1552,7 @@ local function createFinder(D)
     -- Keep feed order: join the first eligible server instead of waiting for a higher-value one.
     task.spawn(function()
         while active do
-            if autoJoinEnabled and not autoJoinBusy and not joining then
+            if (autoJoinEnabled or smartAutoJoinEnabled) and not autoJoinBusy and not joining then
                 autoJoinBusy=true
                 local ok,err=pcall(function()
                     if not config then
@@ -1576,8 +1598,22 @@ local function createFinder(D)
                         autoJoinCandidateIndex=1
                         autoJoinRetryRequested=false
                     end
+                    if smartAutoJoinEnabled and autoJoinCandidateIndex==1 then
+                        local elapsed=os.clock()-smartSelectionStartedAt
+                        if elapsed<SMART_AUTO_JOIN_WAIT_SECONDS then
+                            queryStatus='Smart Auto Join: comparing servers ('..tostring(math.max(0,math.ceil(SMART_AUTO_JOIN_WAIT_SECONDS-elapsed)))..'s)'
+                            return
+                        end
+                        table.sort(autoJoinCandidates,function(a,b)
+                            local ar,br=tonumber(a.rate) or 0,tonumber(b.rate) or 0
+                            if ar~=br then return ar>br end
+                            local ak,bk=tonumber(a.rank or a.localTier or a.tier) or 0,tonumber(b.rank or b.localTier or b.tier) or 0
+                            if ak~=bk then return ak>bk end
+                            return (tonumber(a.expiresAt) or 0)>(tonumber(b.expiresAt) or 0)
+                        end)
+                    end
                     if autoJoinCandidateIndex>#autoJoinCandidates then
-                        queryStatus='Auto Join: no eligible servers; waiting for next feed refresh'
+                        queryStatus=(smartAutoJoinEnabled and 'Smart Auto Join' or 'Auto Join')..': no eligible servers; waiting for next feed refresh'
                         autoJoinCandidates={}
                         autoJoinCandidateIndex=1
                         return
@@ -1594,7 +1630,7 @@ local function createFinder(D)
                     local targetJob=tostring(target.jobId)
                     autoJoinAttempted[attemptKey]=true
                     autoJoinCooldown[targetJob]=os.clock()+AUTO_JOIN_SERVER_COOLDOWN
-                    queryStatus='Auto Join: trying first available server ('..tostring(target.rate)..'/s)'
+                    queryStatus=(smartAutoJoinEnabled and 'Smart Auto Join: trying best match (' or 'Auto Join: trying first available server (')..tostring(target.rate)..'/s)'
                     local claim,claimError=network(config.endpoint..'/v1/join','POST',
                         Http:JSONEncode({placeId=target.placeId,jobId=target.jobId,uid=target.uid,reporterId=reporterId,userId=D.player.UserId}),
                         headers())
@@ -1604,7 +1640,7 @@ local function createFinder(D)
                         end
                         autoJoinCandidateIndex+=1
                         autoJoinRetryRequested=true
-                        queryStatus='Auto Join: server unavailable; trying next server'
+                        queryStatus=(smartAutoJoinEnabled and 'Smart Auto Join: selected server unavailable; trying next match' or 'Auto Join: server unavailable; trying next server')
                         return
                     end
                     local joinExpiry=math.min(tonumber(target.expiresAt) or math.huge,tonumber(claim.expiresAt) or math.huge)
@@ -1614,7 +1650,7 @@ local function createFinder(D)
                         return
                     end
                     joining=true
-                    queryStatus='Auto Join: joining server #'..tostring(autoJoinCandidateIndex)
+                    queryStatus=(smartAutoJoinEnabled and 'Smart Auto Join: joining ranked server #' or 'Auto Join: joining server #')..tostring(autoJoinCandidateIndex)
                     queueAutoExecute()
                     D.saveGuiBeforeTeleport()
                     D.stopFarm()
