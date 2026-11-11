@@ -1573,6 +1573,7 @@ local function createFinder(D)
                             autoJoinCandidateIndex=1
                         else
                             autoJoinNextRefreshAt=nowClock+1
+                            recordJoinError(smartAutoJoinEnabled and 'SMART AUTO JOIN' or 'AUTO JOIN','FEED',message or 'Could not refresh the server list.')
                             queryStatus='Auto Join: '..tostring(message or 'feed refresh failed')
                             return
                         end
@@ -1657,6 +1658,8 @@ local function createFinder(D)
                         Http:JSONEncode({placeId=target.placeId,jobId=target.jobId,uid=target.uid,reporterId=reporterId,userId=D.player.UserId}),
                         headers())
                     if not claim or claim.allowed~=true then
+                        local reason=claim and (claim.error or (claim.full and 'The target server is full.' or claim.taken and 'The egg has already been taken.' or claim.unavailable and 'The target server is unavailable.' or 'The reservation was denied.')) or claimError or 'Reservation request failed.'
+                        recordJoinError(smartAutoJoinEnabled and 'SMART AUTO JOIN' or 'AUTO JOIN','RESERVATION',reason)
                         if claim and (claim.unavailable or claim.full or claim.taken) then
                             target.full=true;target.unavailable=claim.unavailable==true
                         end
@@ -1667,6 +1670,7 @@ local function createFinder(D)
                     end
                     local joinExpiry=math.min(tonumber(target.expiresAt) or math.huge,tonumber(claim.expiresAt) or math.huge)
                     if now>=joinExpiry then
+                        recordJoinError(smartAutoJoinEnabled and 'SMART AUTO JOIN' or 'AUTO JOIN','EXPIRED','The server report or reservation expired before teleport could begin.')
                         autoJoinCandidateIndex+=1;autoJoinRetryRequested=true
                         queryStatus='Auto Join: report expired; trying next server'
                         return
