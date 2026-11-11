@@ -3236,7 +3236,7 @@ local function run()
                                         AgentRadius=1.25,
                                         AgentHeight=5,
                                         AgentCanJump=true,
-                                        WaypointSpacing=2.5
+                                        WaypointSpacing=6
                                     })
                                     local computed,computeError=pcall(function()
                                         candidate:ComputeAsync(root.Position,segmentGoal)
@@ -3307,7 +3307,7 @@ local function run()
                                     if blockedAt and blockedAt>=index then
                                         break
                                     end
-                                    if (root.Position-waypoint.Position).Magnitude<=3.5 then
+                                    if (root.Position-waypoint.Position).Magnitude<=2.5 then
                                         waypointReached=true
                                         break
                                     end
