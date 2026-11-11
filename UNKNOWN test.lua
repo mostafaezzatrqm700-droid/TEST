@@ -3279,11 +3279,6 @@ local function run()
     gui:SetAttribute("UNKNOWN_READY", true)
     local notified={}
     while alive do
-            if autoStealEnabled and not autoStealBusy then autoStealAttempt() end
-            task.wait(0.25)
-        end
-    end)
-    while alive do
         local ok,err=pcall(function()
             local scanStartedClock=os.clock()
             local snapshot=EggState.ReadFieldEggs()
