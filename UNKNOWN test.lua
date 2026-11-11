@@ -3363,8 +3363,36 @@ local function run()
                 local hitbox=eggModel:FindFirstChild('Hitbox',true) or eggModel:FindFirstChild('SmartPromptPart',true)
                 if hitbox and hitbox:IsA('BasePart') then pickupPos=hitbox.Position end
             end
-            -- Step 1 only: move to the selected egg. Do not pick it up or move to the safe zone.
-            root.CFrame=CFrame.new(pickupPos+Vector3.new(0,2.5,0))
+            -- Step 1 only: walk to the selected egg at the Humanoid's normal WalkSpeed.
+            -- Do not set CFrame or PivotTo, which would move the character instantly.
+            local targetPosition=pickupPos+Vector3.new(0,2.5,0)
+            humanoid.Sit=false
+            humanoid.PlatformStand=false
+            root.AssemblyLinearVelocity=Vector3.zero
+            root.AssemblyAngularVelocity=Vector3.zero
+            local targetXZ=Vector3.new(targetPosition.X,0,targetPosition.Z)
+            local startXZ=Vector3.new(root.Position.X,0,root.Position.Z)
+            local distance=(targetXZ-startXZ).Magnitude
+            local walkSpeed=math.max(tonumber(humanoid.WalkSpeed) or 16,1)
+            local timeout=math.max(distance/walkSpeed+12,15)
+            local startedAt=os.clock()
+            local lastMoveCommand=0
+            humanoid:MoveTo(targetPosition)
+            while humanoid.Health>0 do
+                local currentXZ=Vector3.new(root.Position.X,0,root.Position.Z)
+                if (targetXZ-currentXZ).Magnitude<=3 then break end
+                if os.clock()-startedAt>timeout then
+                    error('Auto Steal walking to egg timed out')
+                end
+                if os.clock()-lastMoveCommand>=6 then
+                    humanoid:MoveTo(targetPosition)
+                    lastMoveCommand=os.clock()
+                end
+                game:GetService('RunService').Heartbeat:Wait()
+            end
+            if humanoid.Health<=0 then
+                error('Character died while walking to egg')
+            end
             autoStealLastUid=uid
         end)
         if not ok then warn('[UNKNOWN Auto Steal] '..tostring(err)) end
