@@ -1210,7 +1210,10 @@ local function createFinder(D)
     local aliveMessage=D.label(list,loadingText(os.clock()),UDim2.new(),UDim2.new(1,-10,0,40),nil,12)
     local function network(url,method,body,headers,raw)
         if type(requestFn)~='function' then return nil,'Executor HTTP POST unavailable' end
-        if networkBusy then return nil,'Network request still pending' end
+        local queueDeadline=os.clock()+12
+        while networkBusy and active and os.clock()<queueDeadline do task.wait(0.05) end
+        if not active then return nil,'Finder is no longer active' end
+        if networkBusy then return nil,'Network queue timeout: previous request did not finish' end
         networkBusy=true
         networkTicket+=1
         local ticket=networkTicket
