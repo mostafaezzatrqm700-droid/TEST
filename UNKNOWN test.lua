@@ -662,6 +662,8 @@ local function createFinder(D)
     local minRate,minRank=1e9,6
     local serversMinValue=1e9
     local joining=false
+    local currentJoinSource='JOIN'
+    local joinAttemptSerial=0
     local joinedEggSettingKey='UNKNOWNJoinedEggV1'
     local joinedEgg
     pcall(function()
@@ -1670,6 +1672,9 @@ local function createFinder(D)
                         return
                     end
                     joining=true
+                    currentJoinSource=smartAutoJoinEnabled and 'SMART AUTO JOIN' or 'AUTO JOIN'
+                    joinAttemptSerial+=1
+                    local thisAttempt=joinAttemptSerial
                     queryStatus=(smartAutoJoinEnabled and 'Smart Auto Join: joining ranked server #' or 'Auto Join: joining server #')..tostring(autoJoinCandidateIndex)
                     queueAutoExecute()
                     D.saveGuiBeforeTeleport()
@@ -1679,14 +1684,24 @@ local function createFinder(D)
                         Teleports:TeleportToPlaceInstance(target.placeId,target.jobId,D.player)
                     end)
                     if not teleported then
-                        joining=false
+                        recordJoinError(currentJoinSource,'TELEPORT',teleportError)
+                        joining=false;joinAttemptSerial+=1
                         autoJoinCandidateIndex+=1;autoJoinRetryRequested=true
                         queryStatus='Auto Join: teleport failed; trying next server'
                         warn('UNKNOWN Auto Join teleport:',teleportError)
+                    else
+                        task.delay(12,function()
+                            if joining and joinAttemptSerial==thisAttempt then
+                                recordJoinError(currentJoinSource,'TIMEOUT','Teleport was requested, but Roblox did not start the server transition within 12 seconds.')
+                                joining=false;joinAttemptSerial+=1
+                                autoJoinCandidateIndex+=1;autoJoinRetryRequested=true
+                            end
+                        end)
                     end
                 end)
                 if not ok then
-                    joining=false
+                    recordJoinError(smartAutoJoinEnabled and 'SMART AUTO JOIN' or 'AUTO JOIN','INTERNAL',err)
+                    joining=false;joinAttemptSerial+=1
                     autoJoinCandidateIndex+=1
                     autoJoinRetryRequested=true
                     autoJoinNextRefreshAt=math.min(autoJoinNextRefreshAt,os.clock()+1)
@@ -2588,6 +2603,9 @@ local function createFinder(D)
                 if not D.publicEntryAllowed(entry,(os.clock()+clockOffset)*1000) or entry.takenConfirmed or entry.full or entry.unavailable or joining or os.clock()<joinRetryAt or entry.jobId==game.JobId then return end
                 if (os.clock()+clockOffset)*1000>=entry.expiresAt then queryStatus='Report expired; refreshing'; feedAt=0; return end
                 joining=true;joiningKey=entry.key;joinRetryAt=os.clock()+0.25
+                currentJoinSource='JOIN'
+                joinAttemptSerial+=1
+                local thisAttempt=joinAttemptSerial
                 queryStatus='Joining '..entry.name
                 updateCard(card,entry,card.row.LayoutOrder or 1)
                 -- removed unnecessary pre-join delay
@@ -2599,14 +2617,19 @@ local function createFinder(D)
                 if (os.clock()+clockOffset)*1000>=entry.expiresAt then
                     joining=false;joiningKey=nil;feedAt=-math.huge;render();return
                 end
-                if not config then joining=false;joiningKey=nil;queryStatus='Finder not connected';return end
+                if not config then
+                    recordJoinError('JOIN','CONNECTION','Finder is not connected.')
+                    joining=false;joiningKey=nil;queryStatus='Finder not connected';return
+                end
                 local claim,claimError=network(config.endpoint..'/v1/join','POST',Http:JSONEncode({placeId=entry.placeId,jobId=entry.jobId,uid=entry.uid,reporterId=reporterId,userId=D.player.UserId}),headers())
                 if claim and claim.allowed~=true and (claim.unavailable or claim.full) then
-                    joining=false;joiningKey=nil;entry.full=true;entry.unavailable=claim.unavailable==true;entry.takenConfirmed=claim.takenConfirmed==true;lastRender=nil
+                    recordJoinError('JOIN','RESERVATION',claim.error or (claim.full and 'The target server is full.' or 'The egg is no longer available.'))
+                    joining=false;joiningKey=nil;joinAttemptSerial+=1;entry.full=true;entry.unavailable=claim.unavailable==true;entry.takenConfirmed=claim.takenConfirmed==true;lastRender=nil
                     queryStatus='Egg no longer available';render();return
                 end
                 if not claim or claim.allowed~=true then
-                    joining=false;joiningKey=nil;feedAt=-math.huge
+                    recordJoinError('JOIN','RESERVATION',claim and (claim.error or 'Reservation was denied.') or claimError or 'Reservation request failed.')
+                    joining=false;joiningKey=nil;joinAttemptSerial+=1;feedAt=-math.huge
                     if claim and not claim.retryable then
                         for _,item in ipairs(feed) do if item.jobId==entry.jobId then item.full=true end end
                         render()
@@ -2621,7 +2644,8 @@ local function createFinder(D)
                 end)
                 local joinExpiry=math.min(entry.expiresAt,tonumber(claim.expiresAt) or entry.expiresAt)
                 if (os.clock()+clockOffset)*1000>=joinExpiry then
-                    joining=false;joiningKey=nil;feedAt=-math.huge;entry.expiresAt=joinExpiry;render()
+                    recordJoinError('JOIN','EXPIRED','The server report expired before teleport could begin.')
+                    joining=false;joiningKey=nil;joinAttemptSerial+=1;feedAt=-math.huge;entry.expiresAt=joinExpiry;render()
                     queryStatus='Reset reached; refreshing';return
                 end
                 queueAutoExecute()
@@ -2629,8 +2653,18 @@ local function createFinder(D)
                 D.stopFarm()
                 rememberJoinedEgg(entry)
                 local ok,err=pcall(function() Teleports:TeleportToPlaceInstance(entry.placeId,entry.jobId,D.player) end)
-                if not ok then queryStatus='Join failed: '..tostring(err); joining=false;joiningKey=nil end
-                task.delay(12,function() joining=false;joiningKey=nil end)
+                if not ok then
+                    recordJoinError('JOIN','TELEPORT',err)
+                    queryStatus='Join failed: '..tostring(err)
+                    joining=false;joiningKey=nil;joinAttemptSerial+=1
+                else
+                    task.delay(12,function()
+                        if joining and joinAttemptSerial==thisAttempt then
+                            recordJoinError('JOIN','TIMEOUT','Teleport was requested, but Roblox did not start the server transition within 12 seconds.')
+                            joining=false;joiningKey=nil;joinAttemptSerial+=1
+                        end
+                    end)
+                end
             end)
             end
             card.entry=entry
@@ -2704,7 +2738,8 @@ local function createFinder(D)
                     end
                 end
             end
-            joining=false
+            recordJoinError(currentJoinSource,'ROBLOX TELEPORT',failureText)
+            joining=false;joinAttemptSerial+=1
             if serverIsFull and failedJobId then
                 -- Roblox is the final authority: once it rejects this instance as full,
                 -- immediately change every visible copy from JOIN to FULL.
@@ -2722,17 +2757,17 @@ local function createFinder(D)
                 end
                 lastRender=nil
                 queryStatus='Server is FULL (Roblox rejected the join)'
-                if autoJoinEnabled and autoJoinCandidateIndex<=#autoJoinCandidates then
+                if (autoJoinEnabled or smartAutoJoinEnabled) and autoJoinCandidateIndex<=#autoJoinCandidates then
                     autoJoinCandidateIndex+=1
                     autoJoinRetryRequested=true
-                    queryStatus='Server FULL; Auto Join is trying the next candidate'
+                    queryStatus=(smartAutoJoinEnabled and 'Server FULL; Smart Auto Join is trying the next candidate' or 'Server FULL; Auto Join is trying the next candidate')
                 end
             else
                 queryStatus='Join failed: '..failureText
-                if autoJoinEnabled and autoJoinCandidateIndex<=#autoJoinCandidates then
+                if (autoJoinEnabled or smartAutoJoinEnabled) and autoJoinCandidateIndex<=#autoJoinCandidates then
                     autoJoinCandidateIndex+=1
                     autoJoinRetryRequested=true
-                    queryStatus='Auto Join: teleport failed; trying the next candidate'
+                    queryStatus=(smartAutoJoinEnabled and 'Smart Auto Join: teleport failed; trying the next candidate' or 'Auto Join: teleport failed; trying the next candidate')
                 end
             end
             joiningKey=nil
