@@ -982,11 +982,12 @@ local function createFinder(D)
         rarity.Text=rarityButtonText()
         queryEpoch+=1;feed={};pageOffset=0;feedAt=-math.huge;saveSettings()
     end)
-    local refreshButton=D.make('TextButton',{Text='REFRESH',Position=UDim2.fromOffset(10,54),Size=UDim2.new(0.72,-14,0,30),BackgroundColor3=Color3.fromRGB(115,215,45),BackgroundTransparency=0.15,TextColor3=Color3.new(1,1,1),TextSize=14},panel)
-    local resetTimer=D.label(refreshButton,'RESET --:--',UDim2.fromOffset(8,0),UDim2.new(0.28,-8,1,0),Color3.fromRGB(230,245,255),13)
-    resetTimer.TextXAlignment=Enum.TextXAlignment.Left
+    local refreshButton=D.make('TextButton',{Text='',Position=UDim2.fromOffset(10,54),Size=UDim2.new(0.72,-14,0,30),BackgroundColor3=Color3.fromRGB(115,215,45),BackgroundTransparency=0.15,TextColor3=Color3.new(1,1,1),TextSize=14,Active=false,Selectable=false,AutoButtonColor=false},panel)
+    local resetTimer=D.label(refreshButton,'RESET --:--',UDim2.fromOffset(8,0),UDim2.new(1,-16,1,0),Color3.fromRGB(230,245,255),13)
+    resetTimer.TextXAlignment=Enum.TextXAlignment.Center
     resetTimer.TextTruncate=Enum.TextTruncate.AtEnd
     resetTimer.Active=false
+    resetTimer.Selectable=false
     local refreshing=false
     local joinErrors={}
     local errorButton=D.make('TextButton',{Name='JoinErrorsButton',Text='ERRORS 0',Position=UDim2.new(0.74,0,0,54),Size=UDim2.new(0.26,-10,0,30),BackgroundColor3=Color3.fromRGB(145,48,58),TextColor3=Color3.new(1,1,1),TextSize=12},panel)
@@ -2182,10 +2183,6 @@ local function createFinder(D)
         local now=os.clock()
         if now-lastMutationUpdate<1/20 then return end
         lastMutationUpdate=now
-        if refreshing then
-            local text='REFRESHING'..string.rep('.',math.floor(now/0.4)%3+1)
-            if refreshButton.Text~=text then refreshButton.Text=text end
-        end
         if loadingVisible and aliveMessage.Visible then
             local text=loadingText(now);if aliveMessage.Text~=text then aliveMessage.Text=text end
         end
@@ -2810,30 +2807,6 @@ local function createFinder(D)
             task.defer(function() renderQueued=false;if active then render() end end)
         end
     end
-    refreshButton.Activated:Connect(function()
-        if refreshing or not active then return end
-        refreshing=true;refreshButton.Text='REFRESHING.'
-        task.spawn(function()
-            local ok,err=pcall(function()
-                local deadline=os.clock()+12
-                while active and networkBusy and os.clock()<deadline do task.wait(0.01) end
-                if not active then return end
-                if networkBusy then error('Network busy; try again') end
-                if not config or os.clock()-configAt>60 then
-                    local loaded,message=loadConfig();if not loaded then error(message) end
-                end
-                if not othersOnly then
-                    local loaded,message=refresh();if not loaded then error(message) end
-                end
-                lastRender=nil;render()
-            end)
-            refreshing=false
-            if active then
-                refreshButton.Text='REFRESH'
-                queryStatus=ok and 'List refreshed' or ('Refresh failed: '..tostring(err))
-            end
-        end)
-    end)
     installFinderButtonMotion(D,panel,Input,function() return active end)
     installFinderScrollbarMotion(D,panel,list,Input,function() return active end)
 
