@@ -3118,15 +3118,11 @@ local function run()
                 end
 
                 local eggUid=tostring(record.Uid)
+                -- BottomCFrame is the authoritative ground-level egg position.
+                -- Hitbox/SmartPromptPart can be elevated above the floor and distort pickup-range checks.
                 local pickupPos=record.BottomCFrame.Position
                 local eggFolder=workspace:FindFirstChild('AreaEggSlotsClient')
                 local eggModel=eggFolder and eggFolder:FindFirstChild(eggUid)
-                if eggModel then
-                    local hitbox=eggModel:FindFirstChild('Hitbox',true) or eggModel:FindFirstChild('SmartPromptPart',true)
-                    if hitbox and hitbox:IsA('BasePart') then
-                        pickupPos=hitbox.Position
-                    end
-                end
 
                 -- Stop the mobile/keyboard PlayerModule from sending zero-movement input
                 -- every frame while MoveTo is controlling the character.
