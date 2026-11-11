@@ -1244,6 +1244,37 @@ local function createFinder(D)
         if not ok then return nil,'Invalid JSON response' end
         return decoded
     end
+    
+    -- JOIN uses an independent HTTP lane and never queues behind background requests.
+    local function networkImmediate(url,method,body,headers,raw)
+        if type(requestFn)~='function' then return nil,'Executor HTTP POST unavailable' end
+        if not active then return nil,'Finder is no longer active' end
+        local done,result=false,nil
+        local worker=task.spawn(function()
+            result=table.pack(pcall(requestFn,{Url=url,Method=method,Headers=headers or {},Body=body,Timeout=10}))
+            done=true
+        end)
+        local deadline=os.clock()+12
+        while active and not done and os.clock()<deadline do task.wait(0.01) end
+        if not done then
+            pcall(task.cancel,worker)
+            return nil,'Network timeout'
+        end
+        if not result[1] then return nil,'Network request failed' end
+        local response=result[2]
+        if type(response)~='table' then return nil,'Invalid HTTP response' end
+        local code=tonumber(response.StatusCode or response.Status)
+        if code~=200 then
+            local message='HTTP '..tostring(code)
+            local good,details=pcall(Http.JSONDecode,Http,response.Body or '')
+            if good and type(details)=='table' and type(details.error)=='string' then message=message..': '..details.error:sub(1,120) end
+            return nil,message
+        end
+        if raw then return response.Body end
+        local ok,decoded=pcall(Http.JSONDecode,Http,response.Body or '')
+        if not ok then return nil,'Invalid JSON response' end
+        return decoded
+    end
     -- Roblox public-server directory, independent of the Finder report feed.
     status.Size=UDim2.new(0.53,-14,0,24)
     status.TextSize=11
@@ -2677,7 +2708,7 @@ local function createFinder(D)
                     recordJoinError('JOIN','CONNECTION','Finder is not connected.')
                     joining=false;joiningKey=nil;queryStatus='Finder not connected';return
                 end
-                local claim,claimError=network(config.endpoint..'/v1/join','POST',Http:JSONEncode({placeId=entry.placeId,jobId=entry.jobId,uid=entry.uid,reporterId=reporterId,userId=D.player.UserId}),headers())
+                local claim,claimError=networkImmediate(config.endpoint..'/v1/join','POST',Http:JSONEncode({placeId=entry.placeId,jobId=entry.jobId,uid=entry.uid,reporterId=reporterId,userId=D.player.UserId}),headers())
                 if claim and claim.allowed~=true and (claim.unavailable or claim.full) then
                     recordJoinError('JOIN','RESERVATION',claim.error or (claim.full and 'The target server is full.' or 'The egg is no longer available.'))
                     joining=false;joiningKey=nil;joinAttemptSerial+=1;entry.full=true;entry.unavailable=claim.unavailable==true;entry.takenConfirmed=claim.takenConfirmed==true;lastRender=nil
