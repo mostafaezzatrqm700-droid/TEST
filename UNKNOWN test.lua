@@ -3055,8 +3055,84 @@ local function run()
                     end
                 end
 
-                -- Same movement-only behavior as the existing Auto Steal step.
-                root.CFrame=CFrame.new(pickupPos+Vector3.new(0,2.5,0))
+                -- Find a clear, grounded approach point beside the egg.
+                -- Never teleport directly into the egg/nest or an unverified location.
+                local characterExclusions={character}
+                if eggModel then table.insert(characterExclusions,eggModel) end
+
+                local rayParams=RaycastParams.new()
+                rayParams.FilterType=Enum.RaycastFilterType.Exclude
+                rayParams.FilterDescendantsInstances=characterExclusions
+                rayParams.IgnoreWater=true
+
+                local overlapParams=OverlapParams.new()
+                overlapParams.FilterType=Enum.RaycastFilterType.Exclude
+                overlapParams.FilterDescendantsInstances=characterExclusions
+                overlapParams.MaxParts=40
+
+                local offsets={
+                    Vector3.new(4.5,0,0),Vector3.new(-4.5,0,0),
+                    Vector3.new(0,0,4.5),Vector3.new(0,0,-4.5),
+                    Vector3.new(3.2,0,3.2),Vector3.new(-3.2,0,3.2),
+                    Vector3.new(3.2,0,-3.2),Vector3.new(-3.2,0,-3.2),
+                    Vector3.new(6.5,0,0),Vector3.new(-6.5,0,0),
+                    Vector3.new(0,0,6.5),Vector3.new(0,0,-6.5)
+                }
+
+                local function isHazard(instance)
+                    local current=instance
+                    for _=1,4 do
+                        if not current then break end
+                        local name=string.lower(current.Name)
+                        if string.find(name,'kill',1,true)
+                            or string.find(name,'lava',1,true)
+                            or string.find(name,'void',1,true)
+                            or string.find(name,'damage',1,true)
+                            or string.find(name,'hazard',1,true)
+                            or string.find(name,'death',1,true)
+                            or string.find(name,'acid',1,true) then
+                            return true
+                        end
+                        current=current.Parent
+                    end
+                    return false
+                end
+
+                local safeCFrame=nil
+                for _,offset in ipairs(offsets) do
+                    local candidate=pickupPos+offset
+                    local rayOrigin=candidate+Vector3.new(0,24,0)
+                    local ground=workspace:Raycast(rayOrigin,Vector3.new(0,-80,0),rayParams)
+                    if ground and ground.Normal.Y>=0.65 and not isHazard(ground.Instance) then
+                        local groundIsUsable=ground.Instance:IsA('Terrain')
+                            or (ground.Instance:IsA('BasePart') and ground.Instance.CanCollide)
+                        if groundIsUsable then
+                            local rootPosition=ground.Position+Vector3.new(0,humanoid.HipHeight+root.Size.Y*0.5+0.12,0)
+                            local bodyBox=CFrame.new(rootPosition+Vector3.new(0,1.5,0))
+                            local blockers=workspace:GetPartBoundsInBox(bodyBox,Vector3.new(3.2,4.2,3.2),overlapParams)
+                            local blocked=false
+                            for _,part in ipairs(blockers) do
+                                if part.CanCollide then blocked=true;break end
+                            end
+                            if not blocked then
+                                safeCFrame=CFrame.lookAt(rootPosition,Vector3.new(pickupPos.X,rootPosition.Y,pickupPos.Z))
+                                break
+                            end
+                        end
+                    end
+                end
+
+                if not safeCFrame then
+                    error('No safe landing spot beside this egg; teleport cancelled')
+                end
+
+                humanoid.Sit=false
+                humanoid.PlatformStand=false
+                root.AssemblyLinearVelocity=Vector3.zero
+                root.AssemblyAngularVelocity=Vector3.zero
+                character:PivotTo(safeCFrame)
+                root.AssemblyLinearVelocity=Vector3.zero
+                root.AssemblyAngularVelocity=Vector3.zero
             end)
             if not ok then
                 warn('[UNKNOWN SERVER EGGS STEAL] '..tostring(err))
