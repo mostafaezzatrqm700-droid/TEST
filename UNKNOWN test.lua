@@ -3042,7 +3042,7 @@ local function run()
             BorderSizePixel=0
         },window)
         make('UICorner',{CornerRadius=UDim.new(0,8)},top)
-        label(top,'SERVER EGGS  |  MIN 100M',UDim2.fromOffset(13,7),UDim2.new(1,-65,0,28),Color3.fromRGB(235,242,255),15)
+        label(top,'SERVER EGGS  |  MIN 10M',UDim2.fromOffset(13,7),UDim2.new(1,-65,0,28),Color3.fromRGB(235,242,255),15)
 
         local close=make('TextButton',{
             Name='Close',
@@ -3155,7 +3155,7 @@ local function run()
             local filtered={}
             for _,entry in ipairs(latestEntries) do
                 local rate=tonumber(entry.rate)
-                if rate and rate>=100000000 then
+                if rate and rate>=10000000 then
                     table.insert(filtered,entry)
                 end
             end
