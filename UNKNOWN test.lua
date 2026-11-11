@@ -2387,11 +2387,6 @@ local function createFinder(D)
     local retiredLocal={}
     local render
     local rendering,renderPending,renderQueued=false,false,false
-    local function queueRender()
-        if renderQueued or not active then return end
-        renderQueued=true
-        task.defer(function() renderQueued=false;if active then render() end end)
-    end
     local function renderOnce()
         local passEpoch,passScope=queryEpoch,othersOnly
         local batchStarted=os.clock()
@@ -2818,7 +2813,10 @@ local function createFinder(D)
         rendering=true
         local ok,err=pcall(renderOnce)
         rendering=false
-        if renderPending then renderPending=false;queueRender() end
+        if renderPending then renderPending=false;if not renderQueued and active then
+            renderQueued=true
+            task.defer(function() renderQueued=false;if active then render() end end)
+        end end
         if not ok then list.Visible=true;error(err) end
     end
     requestScopeRender=function()
