@@ -3146,8 +3146,8 @@ local function run()
                     error('Could not access PlayerModule controls: '..tostring(controlsOrError))
                 end
                 movementControls=controlsOrError
-                movementControls:Disable()
                 controlsDisabled=true
+                movementControls:Disable()
 
                 local PathfindingService=game:GetService('PathfindingService')
                 local reached=false
