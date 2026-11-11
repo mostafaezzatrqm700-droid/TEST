@@ -3131,26 +3131,38 @@ local function run()
                     end
                 end
 
-                -- Teleport directly to the egg location, slightly above it.
-                -- Keep the egg model excluded from the lookup; no nearby-floor search is needed.
+                -- Walk to the egg using the Humanoid's real WalkSpeed.
+                -- This uses normal character movement instead of moving the root part directly.
                 local targetPosition=pickupPos+Vector3.new(0,2.5,0)
-                local targetCFrame=CFrame.new(targetPosition)
                 humanoid.Sit=false
                 humanoid.PlatformStand=false
                 root.AssemblyLinearVelocity=Vector3.zero
                 root.AssemblyAngularVelocity=Vector3.zero
-                local travelDistance=(targetPosition-root.Position).Magnitude
+                local horizontalStart=Vector3.new(root.Position.X,0,root.Position.Z)
+                local horizontalTarget=Vector3.new(targetPosition.X,0,targetPosition.Z)
+                local travelDistance=(horizontalTarget-horizontalStart).Magnitude
                 local walkSpeed=math.max(tonumber(humanoid.WalkSpeed) or 16,1)
-                local travelTime=travelDistance/walkSpeed
-                local travelTween=game:GetService('TweenService'):Create(
-                    root,
-                    TweenInfo.new(travelTime,Enum.EasingStyle.Linear,Enum.EasingDirection.Out),
-                    {CFrame=targetCFrame}
-                )
-                travelTween:Play()
-                local playbackState=travelTween.Completed:Wait()
-                if playbackState~=Enum.PlaybackState.Completed then
-                    error('Movement to egg was interrupted')
+                local timeout=math.max(travelDistance/walkSpeed+12,15)
+                local startedAt=os.clock()
+                local lastMoveCommand=0
+                humanoid:MoveTo(targetPosition)
+                while humanoid.Health>0 do
+                    local currentHorizontal=Vector3.new(root.Position.X,0,root.Position.Z)
+                    local remaining=(horizontalTarget-currentHorizontal).Magnitude
+                    if remaining<=3 then
+                        break
+                    end
+                    if os.clock()-startedAt>timeout then
+                        error('Walking to egg timed out')
+                    end
+                    if os.clock()-lastMoveCommand>=6 then
+                        humanoid:MoveTo(targetPosition)
+                        lastMoveCommand=os.clock()
+                    end
+                    game:GetService('RunService').Heartbeat:Wait()
+                end
+                if humanoid.Health<=0 then
+                    error('Character died while walking to egg')
                 end
             end)
             if not ok then
