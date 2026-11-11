@@ -2546,6 +2546,7 @@ local function run()
     end
     local lastScan=0
     createFinder({gui=gui,localPanel={Visible=false},player=player,make=make,label=label,entries=function() return os.clock()-lastScan<10 and latestEntries or {} end,metadata=function() return latestMetadata end,ready=function() return lastScan>0 and os.clock()-lastScan<10 end,parseValue=parseValue,money=money,stopFarm=function() end,getAutoSteal=function() return autoStealEnabled end,setAutoSteal=function(value) autoStealEnabled=value==true end})
+    gui:SetAttribute("UNKNOWN_READY", true)
     local notified={}
     local autoStealBusy=false
     local autoStealLastUid=nil
@@ -2708,7 +2709,12 @@ local function run()
 end
  task.spawn(function()
     local ok,err=pcall(run)
-    if not ok then warn('NYX Finder startup:',err) end
+    if not ok then
+        local env = _G
+        pcall(function() if type(getgenv) == "function" then env = getgenv() end end)
+        if type(env) == "table" then env.__UNKNOWN_START_ERROR = tostring(err) end
+        warn('NYX Finder startup:',err)
+    end
 end)
 end
 
@@ -2746,11 +2752,26 @@ local function launchUnknown()
         return false, tostring(loadError)
     end
 
-    -- Do not report success until the Finder ScreenGui is actually parented.
-    local createdFinder = playerGui:FindFirstChild("UNKNOWN")
-    if not createdFinder then
+    -- Wait for createFinder to finish; an empty ScreenGui is not a successful launch.
+    local deadline = os.clock() + 20
+    local createdFinder
+    repeat
+        createdFinder = playerGui:FindFirstChild("UNKNOWN")
+        if createdFinder and createdFinder:GetAttribute("UNKNOWN_READY") == true then
+            break
+        end
+        if type(runtimeEnv) == "table" and type(runtimeEnv.__UNKNOWN_START_ERROR) == "string" then
+            local startupError = runtimeEnv.__UNKNOWN_START_ERROR
+            runtimeEnv.__UNKNOWN_START_ERROR = nil
+            if createdFinder then pcall(function() createdFinder:Destroy() end) end
+            return false, startupError
+        end
+        task.wait(0.1)
+    until os.clock() >= deadline
+
+    if not createdFinder or createdFinder:GetAttribute("UNKNOWN_READY") ~= true then
         if type(runtimeEnv) == "table" then runtimeEnv[runningJob] = nil end
-        return false, "The Finder window was not created. Please try executing the loader again."
+        return false, "Finder initialization timed out. The interface did not finish loading."
     end
 
     if type(runtimeEnv) == "table" then
