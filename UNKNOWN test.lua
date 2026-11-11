@@ -3163,6 +3163,8 @@ local function run()
                     local path=nil
                     local waypoints=nil
                     local bestLength=math.huge
+                    local floorHits,nearbyGoals,computeErrors,noPathResults=0,0,0,0
+                    local lastComputeError,lastPathStatus='',''
                     local rayParams=RaycastParams.new()
                     rayParams.FilterType=Enum.RaycastFilterType.Exclude
                     local excluded={character}
@@ -3179,18 +3181,23 @@ local function run()
                         local rayOrigin=sample+Vector3.new(0,16,0)
                         local floorHit=workspace:Raycast(rayOrigin,Vector3.new(0,-60,0),rayParams)
                         if floorHit then
+                            floorHits=floorHits+1
                             local goal=floorHit.Position+Vector3.new(0,humanoid.HipHeight+root.Size.Y*0.5,0)
                             if (goal-pickupPos).Magnitude<=8 then
+                                nearbyGoals=nearbyGoals+1
                                 local candidate=PathfindingService:CreatePath({
                                     AgentRadius=1.25,
                                     AgentHeight=5,
                                     AgentCanJump=true,
                                     WaypointSpacing=2.5
                                 })
-                                local computed=pcall(function()
+                                local computed,computeError=pcall(function()
                                     candidate:ComputeAsync(root.Position,goal)
                                 end)
-                                if computed and candidate.Status==Enum.PathStatus.Success then
+                                if not computed then
+                                    computeErrors=computeErrors+1
+                                    lastComputeError=tostring(computeError)
+                                elseif candidate.Status==Enum.PathStatus.Success then
                                     local candidateWaypoints=candidate:GetWaypoints()
                                     local length=0
                                     local previous=root.Position
@@ -3203,6 +3210,10 @@ local function run()
                                         path=candidate
                                         waypoints=candidateWaypoints
                                     end
+                                end
+                                else
+                                    noPathResults=noPathResults+1
+                                    lastPathStatus=tostring(candidate.Status)
                                 end
                             end
                         end
@@ -3260,7 +3271,12 @@ local function run()
                             lastPathError='Reached the end of the path but the egg is still too far away'
                         end
                     else
-                        lastPathError='No safe walking path was found to this egg; all 16 nearby floor samples failed'
+                        lastPathError=string.format(
+                            'No safe walking path. Floor hits: %d/16; pickup-range goals: %d; Pathfinding failures: %d; Compute errors: %d; Last status: %s; Last error: %s',
+                            floorHits,nearbyGoals,noPathResults,computeErrors,
+                            lastPathStatus~='' and lastPathStatus or 'none',
+                            lastComputeError~='' and lastComputeError or 'none'
+                        )
                     end
                     humanoid:MoveTo(root.Position)
                     task.wait(0.25*attempt)
