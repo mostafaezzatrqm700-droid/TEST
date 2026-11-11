@@ -1,5 +1,4 @@
--- UNKNOWN | Integrated Cloudflare key gate
--- Finder code starts only after the key validation endpoint returns valid=true.
+-- UNKNOWN | Direct launch; key verification disabled.
 local function startUnknown()
 -- Auto Execute: register the next-server launch once, and retry silently if registration fails.
 local HttpService = game:GetService("HttpService")
