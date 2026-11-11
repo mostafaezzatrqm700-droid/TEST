@@ -3086,19 +3086,19 @@ local function run()
                     error('Character is not ready')
                 end
 
-                local snapshot=EggState.ReadFieldEggs()
-                if type(snapshot)~='table' or type(snapshot.Records)~='table' then
-                    error('Could not read current server eggs')
-                end
-
-                local record
-                for key,value in pairs(snapshot.Records) do
-                    if value and tostring(value.Uid or key)==tostring(uid) then
-                        record=value
-                        break
+                local function readEgg()
+                    local snapshot=EggState.ReadFieldEggs()
+                    if type(snapshot)~='table' or type(snapshot.Records)~='table' then
+                        error('Could not read current server eggs')
+                    end
+                    for key,value in pairs(snapshot.Records) do
+                        if value and tostring(value.Uid or key)==tostring(uid) then
+                            return value
+                        end
                     end
                 end
 
+                local record=readEgg()
                 if not record or not record.Uid or typeof(record.BottomCFrame)~='CFrame' then
                     error('This egg is no longer available')
                 end
@@ -3107,9 +3107,9 @@ local function run()
                 end
 
                 local eggUid=tostring(record.Uid)
+                local pickupPos=record.BottomCFrame.Position
                 local eggFolder=workspace:FindFirstChild('AreaEggSlotsClient')
                 local eggModel=eggFolder and eggFolder:FindFirstChild(eggUid)
-                local pickupPos=record.BottomCFrame.Position
                 if eggModel then
                     local hitbox=eggModel:FindFirstChild('Hitbox',true) or eggModel:FindFirstChild('SmartPromptPart',true)
                     if hitbox and hitbox:IsA('BasePart') then
@@ -3117,44 +3117,122 @@ local function run()
                     end
                 end
 
-                -- Teleport directly to the egg first. If that point is unsafe or rejected,
-                -- try nearby landing positions so the player does not have to cross hazards.
-                humanoid.Sit=false
-                humanoid.PlatformStand=false
-                local offsets={
-                    Vector3.new(0,4,0),
-                    Vector3.new(4,4,0),Vector3.new(-4,4,0),
-                    Vector3.new(0,4,4),Vector3.new(0,4,-4),
-                    Vector3.new(6,5,6),Vector3.new(-6,5,6),
-                    Vector3.new(6,5,-6),Vector3.new(-6,5,-6),
-                    Vector3.new(0,8,0)
-                }
-                local lastPositionError=nil
+                local PathfindingService=game:GetService('PathfindingService')
+                local reached=false
+                local lastPathError='Could not calculate a path to the egg'
+
+                -- Walk using the game's normal character controller; never move the root by CFrame/PivotTo.
                 for attempt=1,3 do
-                    if not player.Character or player.Character~=character or humanoid.Health<=0 then
-                        error('Character died or respawned before teleport completed')
+                    if not player.Character or player.Character~=character or humanoid.Health<=0 or not root.Parent then
+                        error('Character died or respawned while walking to the egg')
                     end
-                    for _,offset in ipairs(offsets) do
-                        local destination=pickupPos+offset
-                        local destinationCFrame=CFrame.new(destination, destination+root.CFrame.LookVector)
-                        local moved=pcall(function()
-                            character:PivotTo(destinationCFrame)
-                            root.AssemblyLinearVelocity=Vector3.zero
-                            root.AssemblyAngularVelocity=Vector3.zero
+                    local path=PathfindingService:CreatePath({
+                        AgentRadius=2,
+                        AgentHeight=5,
+                        AgentCanJump=true,
+                        WaypointSpacing=4
+                    })
+                    local computed=pcall(function()
+                        path:ComputeAsync(root.Position,pickupPos)
+                    end)
+                    if computed and path.Status==Enum.PathStatus.Success then
+                        local waypoints=path:GetWaypoints()
+                        local blockedAt=nil
+                        local blockedConnection=path.Blocked:Connect(function(index)
+                            if index>=1 then blockedAt=index end
                         end)
-                        if moved then
-                            game:GetService('RunService').Heartbeat:Wait()
-                            if humanoid.Health>0 and root.Parent and (root.Position-destination).Magnitude<=12 then
-                                return
+                        local pathSucceeded=true
+                        for index,waypoint in ipairs(waypoints) do
+                            if not player.Character or player.Character~=character or humanoid.Health<=0 then
+                                pathSucceeded=false
+                                lastPathError='Character died or respawned while following the path'
+                                break
                             end
-                            lastPositionError='Game physics or server correction rejected the teleport'
-                        else
-                            lastPositionError='Teleport command failed'
+                            if blockedAt and blockedAt>=index then
+                                pathSucceeded=false
+                                lastPathError='Path became blocked; recalculating'
+                                break
+                            end
+                            if waypoint.Action==Enum.PathWaypointAction.Jump then
+                                humanoid.Jump=true
+                            end
+                            humanoid:MoveTo(waypoint.Position)
+                            local distance=(root.Position-waypoint.Position).Magnitude
+                            local speed=math.max(8,humanoid.WalkSpeed)
+                            local timeout=math.clamp(distance/speed+4,6,18)
+                            local started=os.clock()
+                            local waypointReached=false
+                            while os.clock()-started<timeout do
+                                if not player.Character or player.Character~=character or humanoid.Health<=0 then
+                                    break
+                                end
+                                if blockedAt and blockedAt>=index then
+                                    break
+                                end
+                                if (root.Position-waypoint.Position).Magnitude<=3.5 then
+                                    waypointReached=true
+                                    break
+                                end
+                                task.wait(0.1)
+                            end
+                            if not waypointReached then
+                                pathSucceeded=false
+                                lastPathError=(blockedAt and 'Path became blocked; recalculating') or 'Could not reach a path waypoint'
+                                break
+                            end
                         end
+                        blockedConnection:Disconnect()
+                        if pathSucceeded and (root.Position-pickupPos).Magnitude<=8 then
+                            reached=true
+                            break
+                        elseif pathSucceeded then
+                            lastPathError='Reached the end of the path but the egg is still too far away'
+                        end
+                    else
+                        lastPathError='No safe walking path was found to this egg'
                     end
-                    task.wait(0.15*attempt)
+                    humanoid:MoveTo(root.Position)
+                    task.wait(0.25*attempt)
                 end
-                error(lastPositionError or 'Teleport failed after 3 attempts')
+
+                if not reached then
+                    error(lastPathError)
+                end
+
+                -- Re-check the live record and distance immediately before asking the server to carry it.
+                local current=readEgg()
+                if not current or tostring(current.Uid)~=eggUid
+                    or (current.State~=States.Slot and current.State~=States.Dropped)
+                    or current.CarrierUserId~=nil then
+                    error('The egg is no longer available to carry')
+                end
+                if (root.Position-pickupPos).Magnitude>8 then
+                    error('Too far from the egg for the server pickup request')
+                end
+
+                local packages=RS:FindFirstChild('Packages')
+                local networking=packages and packages:FindFirstChild('Networking')
+                local carryRemote=networking and networking:FindFirstChild('RF/EggWorld/AskFieldEggCarry')
+                if not carryRemote then
+                    error('The official egg-carry request is unavailable')
+                end
+                if not carryRemote:IsA('RemoteFunction') then
+                    error('The egg-carry endpoint is not a RemoteFunction')
+                end
+
+                local payload={Uid=eggUid}
+                if eggUid:sub(1,13)=='FirstAreaEgg_' and current.AreaId~=nil and current.NestId~=nil then
+                    payload.FirstAreaSlotKey=tostring(current.AreaId)..':'..tostring(current.NestId)
+                end
+                local requestOk,accepted,reason=pcall(function()
+                    return carryRemote:InvokeServer(payload)
+                end)
+                if not requestOk then
+                    error('Server pickup request failed: '..tostring(accepted))
+                end
+                if accepted~=true then
+                    error('Server refused the egg pickup: '..tostring(reason or accepted or 'unknown reason'))
+                end
             end)
             if not ok then
                 warn('[UNKNOWN SERVER EGGS STEAL] '..tostring(err))
@@ -3248,7 +3326,7 @@ local function run()
                                 pcall(function()
                                     local recorder=getgenv().UNKNOWN_RecordJoinError
                                     if type(recorder)=='function' then
-                                        recorder('STEAL','TELEPORT',message)
+                                        recorder('STEAL','PATHFINDING',message)
                                     end
                                 end)
                             end
