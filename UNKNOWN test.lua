@@ -3158,17 +3158,54 @@ local function run()
                     if not player.Character or player.Character~=character or humanoid.Health<=0 or not root.Parent then
                         error('Character died or respawned while walking to the egg')
                     end
-                    local path=PathfindingService:CreatePath({
-                        AgentRadius=2,
-                        AgentHeight=5,
-                        AgentCanJump=true,
-                        WaypointSpacing=4
-                    })
-                    local computed=pcall(function()
-                        path:ComputeAsync(root.Position,pickupPos)
-                    end)
-                    if computed and path.Status==Enum.PathStatus.Success then
-                        local waypoints=path:GetWaypoints()
+                    -- The egg's own hitbox is often not a walkable navigation point.
+                    -- Try several reachable floor positions around it, staying within pickup range.
+                    local path=nil
+                    local waypoints=nil
+                    local bestLength=math.huge
+                    local rayParams=RaycastParams.new()
+                    rayParams.FilterType=Enum.RaycastFilterType.Exclude
+                    local excluded={character}
+                    if eggModel then
+                        table.insert(excluded,eggModel)
+                    end
+                    rayParams.FilterDescendantsInstances=excluded
+                    local offsets={
+                        Vector3.new(5,0,0),Vector3.new(-5,0,0),
+                        Vector3.new(0,0,5),Vector3.new(0,0,-5),
+                        Vector3.new(4,0,4),Vector3.new(-4,0,4),
+                        Vector3.new(4,0,-4),Vector3.new(-4,0,-4)
+                    }
+                    for _,offset in ipairs(offsets) do
+                        local sample=pickupPos+offset
+                        local rayOrigin=sample+Vector3.new(0,12,0)
+                        local floorHit=workspace:Raycast(rayOrigin,Vector3.new(0,-40,0),rayParams)
+                        local goal=floorHit and (floorHit.Position+Vector3.new(0,humanoid.HipHeight+root.Size.Y*0.5,0)) or sample
+                        local candidate=PathfindingService:CreatePath({
+                            AgentRadius=1.5,
+                            AgentHeight=5,
+                            AgentCanJump=true,
+                            WaypointSpacing=3
+                        })
+                        local computed=pcall(function()
+                            candidate:ComputeAsync(root.Position,goal)
+                        end)
+                        if computed and candidate.Status==Enum.PathStatus.Success then
+                            local candidateWaypoints=candidate:GetWaypoints()
+                            local length=0
+                            local previous=root.Position
+                            for _,point in ipairs(candidateWaypoints) do
+                                length=length+(point.Position-previous).Magnitude
+                                previous=point.Position
+                            end
+                            if length<bestLength then
+                                bestLength=length
+                                path=candidate
+                                waypoints=candidateWaypoints
+                            end
+                        end
+                    end
+                    if path and waypoints then
                         local blockedAt=nil
                         local blockedConnection=path.Blocked:Connect(function(index)
                             if index>=1 then blockedAt=index end
@@ -3221,7 +3258,7 @@ local function run()
                             lastPathError='Reached the end of the path but the egg is still too far away'
                         end
                     else
-                        lastPathError='No safe walking path was found to this egg'
+                        lastPathError='No walkable path found near the egg; all 8 nearby floor points failed'
                     end
                     humanoid:MoveTo(root.Position)
                     task.wait(0.25*attempt)
