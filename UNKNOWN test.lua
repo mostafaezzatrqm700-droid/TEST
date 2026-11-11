@@ -2823,7 +2823,10 @@ local function createFinder(D)
         -- Hide old-tab rows immediately; never expose remote JOINs as MY SERVER.
         list.Visible=false
         list.CanvasPosition=Vector2.new(0,0)
-        queueRender()
+        if not renderQueued and active then
+            renderQueued=true
+            task.defer(function() renderQueued=false;if active then render() end end)
+        end
     end
     refreshButton.Activated:Connect(function()
         if refreshing or not active then return end
