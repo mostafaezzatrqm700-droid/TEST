@@ -2984,7 +2984,7 @@ local function run()
             if not record or not record.Uid or typeof(record.BottomCFrame)~='CFrame' then return end
             if (record.State~=States.Slot and record.State~=States.Dropped) or record.CarrierUserId~=nil then return end
             local uid=tostring(record.Uid)
-            if autoStealRetryAt[uid] and os.clock()<autoStealRetryAt[uid] then return end
+            if autoStealLastUid==uid then return end
             local eggModel=workspace:FindFirstChild('AreaEggSlotsClient')
             eggModel=eggModel and eggModel:FindFirstChild(uid)
             local pickupPos=record.BottomCFrame.Position
@@ -2992,32 +2992,8 @@ local function run()
                 local hitbox=eggModel:FindFirstChild('Hitbox',true) or eggModel:FindFirstChild('SmartPromptPart',true)
                 if hitbox and hitbox:IsA('BasePart') then pickupPos=hitbox.Position end
             end
-            -- Move to the egg using a short, bounded character reposition; no repeated reset/death loop.
+            -- Step 1 only: move to the selected egg. Do not pick it up or move to the safe zone.
             root.CFrame=CFrame.new(pickupPos+Vector3.new(0,2.5,0))
-            task.wait(0.12)
-            if not autoStealEnabled then return end
-            local key=slotKeyFor(record)
-            local accepted=false
-            for attempt=1,3 do
-                if not autoStealEnabled then return end
-                local callOk,result=pcall(EggState.CarryFieldEgg,uid,key)
-                if callOk and result==true then accepted=true;break end
-                task.wait(0.18)
-                local fresh=EggState.ReadFieldEgg(uid)
-                if fresh and fresh.CarrierUserId==player.UserId then accepted=true;break end
-            end
-            if not accepted then autoStealLastUid=uid;autoStealRetryAt[uid]=os.clock()+0.9;return end
-            local carried=false
-            for _=1,10 do
-                local fresh=EggState.ReadFieldEgg(uid)
-                if fresh and fresh.CarrierUserId==player.UserId then carried=true;break end
-                task.wait(0.08)
-            end
-            if not carried or not autoStealEnabled then return end
-            local safe=resolveSafeZone()
-            if not safe then warn('[UNKNOWN Auto Steal] Safe Zone could not be resolved; staying with carried egg');return end
-            local _,_,liveRoot=currentRoot()
-            if liveRoot then liveRoot.CFrame=CFrame.new(safe) end
             autoStealLastUid=uid
         end)
         if not ok then warn('[UNKNOWN Auto Steal] '..tostring(err)) end
