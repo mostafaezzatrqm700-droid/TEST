@@ -3181,25 +3181,42 @@ local function run()
                 end
 
                 local safeCFrame=nil
+                local rayIgnore={}
+                local ground
+                local rayOrigin
                 for _,offset in ipairs(offsets) do
                     local candidate=pickupPos+offset
-                    local rayOrigin=candidate+Vector3.new(0,60,0)
-                    local ground=workspace:Raycast(rayOrigin,Vector3.new(0,-180,0),rayParams)
-                    if ground and ground.Normal.Y>=0.65 and not isHazard(ground.Instance) then
-                        local groundIsUsable=ground.Instance:IsA('Terrain')
-                            or (ground.Instance:IsA('BasePart') and ground.Instance.CanCollide)
-                        if groundIsUsable then
-                            local rootPosition=ground.Position+Vector3.new(0,humanoid.HipHeight+root.Size.Y*0.5+0.12,0)
-                            local bodyBox=CFrame.new(rootPosition+Vector3.new(0,1.5,0))
-                            local blockers=workspace:GetPartBoundsInBox(bodyBox,Vector3.new(2.4,3.5,2.4),overlapParams)
-                            local blocked=false
-                            for _,part in ipairs(blockers) do
-                                if part.CanCollide then blocked=true;break end
-                            end
-                            if not blocked then
-                                safeCFrame=CFrame.lookAt(rootPosition,Vector3.new(pickupPos.X,rootPosition.Y,pickupPos.Z))
-                                break
-                            end
+                    table.clear(rayIgnore)
+                    for _,excluded in ipairs(characterExclusions) do
+                        rayIgnore[#rayIgnore+1]=excluded
+                    end
+                    rayParams.FilterDescendantsInstances=rayIgnore
+                    rayOrigin=candidate+Vector3.new(0,60,0)
+                    ground=nil
+                    for _=1,10 do
+                        ground=workspace:Raycast(rayOrigin,Vector3.new(0,-180,0),rayParams)
+                        if not ground then break end
+                        if isHazard(ground.Instance) then ground=nil;break end
+                        if ground.Normal.Y>=0.65
+                            and (ground.Instance:IsA('Terrain')
+                                or (ground.Instance:IsA('BasePart') and ground.Instance.CanCollide)) then
+                            break
+                        end
+                        rayIgnore[#rayIgnore+1]=ground.Instance
+                        rayParams.FilterDescendantsInstances=rayIgnore
+                        ground=nil
+                    end
+                    if ground and ground.Normal.Y>=0.65 then
+                        local rootPosition=ground.Position+Vector3.new(0,humanoid.HipHeight+root.Size.Y*0.5+0.12,0)
+                        local bodyBox=CFrame.new(rootPosition+Vector3.new(0,1.5,0))
+                        local blockers=workspace:GetPartBoundsInBox(bodyBox,Vector3.new(2.4,3.5,2.4),overlapParams)
+                        local blocked=false
+                        for _,part in ipairs(blockers) do
+                            if part.CanCollide then blocked=true;break end
+                        end
+                        if not blocked then
+                            safeCFrame=CFrame.lookAt(rootPosition,Vector3.new(pickupPos.X,rootPosition.Y,pickupPos.Z))
+                            break
                         end
                     end
                 end
