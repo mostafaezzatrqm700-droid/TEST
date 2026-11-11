@@ -996,12 +996,61 @@ local function createFinder(D)
         rarity.Text=rarityButtonText()
         queryEpoch+=1;feed={};pageOffset=0;feedAt=-math.huge;saveSettings()
     end)
-    local refreshButton=D.make('TextButton',{Text='REFRESH',Position=UDim2.fromOffset(10,54),Size=UDim2.new(1,-20,0,30),BackgroundColor3=Color3.fromRGB(115,215,45),BackgroundTransparency=0.15,TextColor3=Color3.new(1,1,1),TextSize=14},panel)
+    local refreshButton=D.make('TextButton',{Text='REFRESH',Position=UDim2.fromOffset(10,54),Size=UDim2.new(0.72,-14,0,30),BackgroundColor3=Color3.fromRGB(115,215,45),BackgroundTransparency=0.15,TextColor3=Color3.new(1,1,1),TextSize=14},panel)
     local resetTimer=D.label(refreshButton,'RESET --:--',UDim2.fromOffset(8,0),UDim2.new(0.28,-8,1,0),Color3.fromRGB(230,245,255),13)
     resetTimer.TextXAlignment=Enum.TextXAlignment.Left
     resetTimer.TextTruncate=Enum.TextTruncate.AtEnd
     resetTimer.Active=false
     local refreshing=false
+    local joinErrors={}
+    local errorButton=D.make('TextButton',{Name='JoinErrorsButton',Text='ERRORS 0',Position=UDim2.new(0.74,0,0,54),Size=UDim2.new(0.26,-10,0,30),BackgroundColor3=Color3.fromRGB(145,48,58),TextColor3=Color3.new(1,1,1),TextSize=12},panel)
+    local errorOverlay=D.make('Frame',{Name='JoinErrorsPanel',Position=UDim2.fromScale(0.04,0.12),Size=UDim2.fromScale(0.92,0.78),BackgroundColor3=Color3.fromRGB(12,8,25),BorderSizePixel=0,Visible=false,ZIndex=80},panel)
+    D.make('UICorner',{CornerRadius=UDim.new(0,8)},errorOverlay)
+    D.make('UIStroke',{Color=Color3.fromRGB(190,65,95),Thickness=2},errorOverlay)
+    local errorTitle=D.label(errorOverlay,'JOIN ERRORS',UDim2.fromOffset(12,8),UDim2.new(1,-140,0,30),Color3.fromRGB(255,235,245),17)
+    errorTitle.ZIndex=81
+    local clearErrorsButton=D.make('TextButton',{Text='CLEAR',Position=UDim2.new(1,-120,0,8),Size=UDim2.fromOffset(54,28),BackgroundColor3=Color3.fromRGB(105,65,135),TextColor3=Color3.new(1,1,1),TextSize=11,ZIndex=81},errorOverlay)
+    local closeErrorsButton=D.make('TextButton',{Text='X',Position=UDim2.new(1,-58,0,8),Size=UDim2.fromOffset(46,28),BackgroundColor3=Color3.fromRGB(145,48,58),TextColor3=Color3.new(1,1,1),TextSize=13,ZIndex=81},errorOverlay)
+    local errorList=D.make('ScrollingFrame',{Name='JoinErrorList',Position=UDim2.fromOffset(10,46),Size=UDim2.new(1,-20,1,-56),BackgroundColor3=Color3.fromRGB(20,14,36),BorderSizePixel=0,CanvasSize=UDim2.new(),ScrollBarThickness=6,ScrollBarImageColor3=Color3.fromRGB(190,100,220),ZIndex=81},errorOverlay)
+    D.make('UICorner',{CornerRadius=UDim.new(0,5)},errorList)
+    local errorLayout=D.make('UIListLayout',{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder},errorList)
+    local function renderJoinErrors()
+        for _,child in ipairs(errorList:GetChildren()) do
+            if child~=errorLayout then child:Destroy() end
+        end
+        if #joinErrors==0 then
+            local empty=D.label(errorList,'No join errors recorded',UDim2.fromOffset(8,8),UDim2.new(1,-16,0,36),Color3.fromRGB(190,190,205),13)
+            empty.ZIndex=82
+            errorList.CanvasSize=UDim2.fromOffset(0,48)
+        else
+            local y=0
+            for i,item in ipairs(joinErrors) do
+                local row=D.make('Frame',{Size=UDim2.new(1,-8,0,76),BackgroundColor3=Color3.fromRGB(39,23,48),BorderSizePixel=0,LayoutOrder=i,ZIndex=82},errorList)
+                D.make('UICorner',{CornerRadius=UDim.new(0,5)},row)
+                local heading=D.label(row,'['..item.time..'] '..item.source..' / '..item.stage,UDim2.fromOffset(8,4),UDim2.new(1,-16,0,22),Color3.fromRGB(255,170,190),12)
+                heading.ZIndex=83
+                heading.TextXAlignment=Enum.TextXAlignment.Left
+                local body=D.label(row,item.message,UDim2.fromOffset(8,27),UDim2.new(1,-16,1,-31),Color3.fromRGB(245,235,250),11)
+                body.ZIndex=83
+                body.TextWrapped=true
+                body.TextYAlignment=Enum.TextYAlignment.Top
+                y+=82
+            end
+            errorList.CanvasSize=UDim2.fromOffset(0,y)
+            errorList.CanvasPosition=Vector2.new(0,math.max(0,y-errorList.AbsoluteSize.Y))
+        end
+        errorButton.Text='ERRORS '..tostring(#joinErrors)
+    end
+    local function recordJoinError(source,stage,message)
+        local textMessage=tostring(message or 'Unknown error')
+        if #textMessage>260 then textMessage=textMessage:sub(1,257)..'...' end
+        table.insert(joinErrors,1,{time=os.date('%H:%M:%S'),source=tostring(source or 'JOIN'),stage=tostring(stage or 'FAILED'),message=textMessage})
+        while #joinErrors>40 do table.remove(joinErrors) end
+        renderJoinErrors()
+    end
+    errorButton.Activated:Connect(function() errorOverlay.Visible=not errorOverlay.Visible;if errorOverlay.Visible then renderJoinErrors() end end)
+    closeErrorsButton.Activated:Connect(function() errorOverlay.Visible=false end)
+    clearErrorsButton.Activated:Connect(function() joinErrors={};renderJoinErrors() end)
     local list=D.make('ScrollingFrame',{Position=UDim2.fromOffset(14,92),Size=UDim2.new(1,-16,1,-278),BackgroundTransparency=1,BorderSizePixel=0,AutomaticCanvasSize=Enum.AutomaticSize.None,CanvasSize=UDim2.new(),ScrollBarThickness=6,ScrollBarImageColor3=Color3.fromRGB(137,140,150),ScrollBarImageTransparency=0},panel)
     
     -- UNKNOWN SPACE THEME PATCH v1 (visual-only)
