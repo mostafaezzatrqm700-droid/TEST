@@ -3139,9 +3139,19 @@ local function run()
                 humanoid.PlatformStand=false
                 root.AssemblyLinearVelocity=Vector3.zero
                 root.AssemblyAngularVelocity=Vector3.zero
-                character:PivotTo(targetCFrame)
-                root.AssemblyLinearVelocity=Vector3.zero
-                root.AssemblyAngularVelocity=Vector3.zero
+                local travelDistance=(targetPosition-root.Position).Magnitude
+                local walkSpeed=math.max(tonumber(humanoid.WalkSpeed) or 16,1)
+                local travelTime=travelDistance/walkSpeed
+                local travelTween=game:GetService('TweenService'):Create(
+                    root,
+                    TweenInfo.new(travelTime,Enum.EasingStyle.Linear,Enum.EasingDirection.Out),
+                    {CFrame=targetCFrame}
+                )
+                travelTween:Play()
+                local playbackState=travelTween.Completed:Wait()
+                if playbackState~=Enum.PlaybackState.Completed then
+                    error('Movement to egg was interrupted')
+                end
             end)
             if not ok then
                 warn('[UNKNOWN SERVER EGGS STEAL] '..tostring(err))
