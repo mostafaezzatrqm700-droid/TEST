@@ -1,6 +1,7 @@
 -- UNKNOWN | Direct launch; key verification disabled.
  -- UNKNOWN visible error reporter
 local errorGui, errorText
+local errorConnection
 local latestErrorDetails = ""
 local function showUnknownError(message, trace)
     local details = tostring(message or "Unknown error")
@@ -159,7 +160,7 @@ end
 
 -- Capture runtime errors raised by script threads as well as startup failures.
 pcall(function()
-    game:GetService("ScriptContext").Error:Connect(function(message, stackTrace, sourceScript)
+    errorConnection = game:GetService("ScriptContext").Error:Connect(function(message, stackTrace, sourceScript)
         local sourceName = sourceScript and sourceScript:GetFullName() or "Unknown source"
         showUnknownError(message, tostring(stackTrace or "") .. "\\nSource: " .. sourceName)
     end)
@@ -237,6 +238,8 @@ pcall(function()
 end)
 sharedRuntime.__UNKNOWN_STOP_ACTIVE = function()
     alive = false
+    if errorConnection then pcall(function() errorConnection:Disconnect() end); errorConnection=nil end
+    if errorGui and errorGui.Parent then pcall(function() errorGui:Destroy() end) end
     if gui and gui.Parent then
         pcall(function() gui:Destroy() end)
     end
@@ -851,6 +854,19 @@ local function createFinder(D)
     autoStealToggle.Activated:Connect(function()
         if type(D.setAutoSteal)=='function' then D.setAutoSteal(not (D.getAutoSteal and D.getAutoSteal() or false)) end
         refreshAutoStealToggle()
+    end)
+    local stopScriptButton=D.make('TextButton',{Name='StopScriptButton',Text='STOP SCRIPT',Position=UDim2.fromOffset(14,236),Size=UDim2.new(1,-28,0,46),BackgroundColor3=Color3.fromRGB(155,42,48),TextColor3=Color3.fromRGB(255,255,255),TextSize=15,Font=Enum.Font.GothamBold,BorderSizePixel=0,ZIndex=31},settingsOverlay)
+    stopScriptButton.Activated:Connect(function()
+        stopScriptButton.Text='STOPPING...'
+        stopScriptButton.Active=false
+        autoExecuteEnabled=false
+        saveSettings()
+        if type(D.setAutoSteal)=='function' then D.setAutoSteal(false) end
+        if type(D.stopScript)=='function' then
+            D.stopScript()
+        elseif D.gui and D.gui.Parent then
+            D.gui:Destroy()
+        end
     end)
     D.saveGuiBeforeTeleport=saveSettings
     heading.Size=UDim2.fromOffset(185,32)
@@ -2709,7 +2725,7 @@ local function run()
         return valid(value) and value or nil
     end
     local lastScan=0
-    createFinder({gui=gui,localPanel={Visible=false},player=player,make=make,label=label,entries=function() return os.clock()-lastScan<10 and latestEntries or {} end,metadata=function() return latestMetadata end,ready=function() return lastScan>0 and os.clock()-lastScan<10 end,parseValue=parseValue,money=money,stopFarm=function() end,getAutoSteal=function() return autoStealEnabled end,setAutoSteal=function(value) autoStealEnabled=value==true end})
+    createFinder({gui=gui,localPanel={Visible=false},player=player,make=make,label=label,entries=function() return os.clock()-lastScan<10 and latestEntries or {} end,metadata=function() return latestMetadata end,ready=function() return lastScan>0 and os.clock()-lastScan<10 end,parseValue=parseValue,money=money,stopFarm=function() end,getAutoSteal=function() return autoStealEnabled end,setAutoSteal=function(value) autoStealEnabled=value==true end,stopScript=function() alive=false; if errorConnection then pcall(function() errorConnection:Disconnect() end);errorConnection=nil end; if errorGui and errorGui.Parent then pcall(function() errorGui:Destroy() end) end; if gui and gui.Parent then pcall(function() gui:Destroy() end) end end})
     gui:SetAttribute("UNKNOWN_READY", true)
     local notified={}
     local autoStealBusy=false
