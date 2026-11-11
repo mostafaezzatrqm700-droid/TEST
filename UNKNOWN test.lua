@@ -2661,8 +2661,6 @@ local function run()
     local latestEntries={}
     local latestMetadata=nil
     local autoStealEnabled=false
-    D.getAutoSteal=function() return autoStealEnabled end
-    D.setAutoSteal=function(value) autoStealEnabled=value==true end
     local scanCycle
     pcall(function() scanCycle=module('Shared.Util.AreaEggCycle') end)
     local function parseValue(text)
