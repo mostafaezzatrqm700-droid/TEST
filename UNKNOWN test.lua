@@ -3152,7 +3152,13 @@ local function run()
                     Vector3.new(3.2,0,3.2),Vector3.new(-3.2,0,3.2),
                     Vector3.new(3.2,0,-3.2),Vector3.new(-3.2,0,-3.2),
                     Vector3.new(6.5,0,0),Vector3.new(-6.5,0,0),
-                    Vector3.new(0,0,6.5),Vector3.new(0,0,-6.5)
+                    Vector3.new(0,0,6.5),Vector3.new(0,0,-6.5),
+                    Vector3.new(8.5,0,0),Vector3.new(-8.5,0,0),
+                    Vector3.new(0,0,8.5),Vector3.new(0,0,-8.5),
+                    Vector3.new(6,0,6),Vector3.new(-6,0,6),
+                    Vector3.new(6,0,-6),Vector3.new(-6,0,-6),
+                    Vector3.new(11,0,0),Vector3.new(-11,0,0),
+                    Vector3.new(0,0,11),Vector3.new(0,0,-11)
                 }
 
                 local function isHazard(instance)
@@ -3177,15 +3183,15 @@ local function run()
                 local safeCFrame=nil
                 for _,offset in ipairs(offsets) do
                     local candidate=pickupPos+offset
-                    local rayOrigin=candidate+Vector3.new(0,24,0)
-                    local ground=workspace:Raycast(rayOrigin,Vector3.new(0,-80,0),rayParams)
+                    local rayOrigin=candidate+Vector3.new(0,60,0)
+                    local ground=workspace:Raycast(rayOrigin,Vector3.new(0,-180,0),rayParams)
                     if ground and ground.Normal.Y>=0.65 and not isHazard(ground.Instance) then
                         local groundIsUsable=ground.Instance:IsA('Terrain')
                             or (ground.Instance:IsA('BasePart') and ground.Instance.CanCollide)
                         if groundIsUsable then
                             local rootPosition=ground.Position+Vector3.new(0,humanoid.HipHeight+root.Size.Y*0.5+0.12,0)
                             local bodyBox=CFrame.new(rootPosition+Vector3.new(0,1.5,0))
-                            local blockers=workspace:GetPartBoundsInBox(bodyBox,Vector3.new(3.2,4.2,3.2),overlapParams)
+                            local blockers=workspace:GetPartBoundsInBox(bodyBox,Vector3.new(2.4,3.5,2.4),overlapParams)
                             local blocked=false
                             for _,part in ipairs(blockers) do
                                 if part.CanCollide then blocked=true;break end
