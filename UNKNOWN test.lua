@@ -1048,6 +1048,10 @@ local function createFinder(D)
         while #joinErrors>40 do table.remove(joinErrors) end
         renderJoinErrors()
     end
+    -- Expose the existing Errors recorder to the separate server-eggs module.
+    pcall(function()
+        getgenv().UNKNOWN_RecordJoinError=recordJoinError
+    end)
     errorButton.Activated:Connect(function() errorOverlay.Visible=not errorOverlay.Visible;if errorOverlay.Visible then renderJoinErrors() end end)
     closeErrorsButton.Activated:Connect(function() errorOverlay.Visible=false end)
     clearErrorsButton.Activated:Connect(function() joinErrors={};renderJoinErrors() end)
@@ -3223,6 +3227,12 @@ local function run()
                                 stealButton.Text='RETRY'
                                 stealButton.BackgroundColor3=Color3.fromRGB(135,65,65)
                                 stealButton:SetAttribute('ErrorMessage',message)
+                                pcall(function()
+                                    local recorder=getgenv().UNKNOWN_RecordJoinError
+                                    if type(recorder)=='function' then
+                                        recorder('STEAL','TELEPORT',message)
+                                    end
+                                end)
                             end
                         end
                     end)
