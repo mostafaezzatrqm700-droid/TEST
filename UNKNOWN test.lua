@@ -653,6 +653,7 @@ local function createFinder(D)
     local reporterId=Http:GenerateGUID(false)
     local config,configAt=nil,-math.huge
     local feed,feedAt={},0
+    local knownFullServers={}
     local clockOffset=0
     local networkBusy=false
     local networkTicket=0
@@ -1464,6 +1465,8 @@ local function createFinder(D)
         feed={}
         for _,entry in ipairs(allItems) do
             if D.publicEntryAllowed(entry,(os.clock()+clockOffset)*1000) then
+                local fullUntil=knownFullServers[tostring(entry.jobId or '')]
+                if fullUntil and fullUntil>os.clock() then entry.full=true end
                 feed[#feed+1]=entry
             end
         end
@@ -1520,6 +1523,10 @@ local function createFinder(D)
             break
         end
         autoJoinClockOffset=(serverTime or os.time()*1000)/1000-os.clock()
+        for _,entry in ipairs(allItems) do
+            local fullUntil=knownFullServers[tostring(entry.jobId or '')]
+            if fullUntil and fullUntil>os.clock() then entry.full=true end
+        end
         autoJoinFeed=allItems
         autoJoinFeedAt=os.clock()
         autoJoinFeedStamp+=1
@@ -2648,6 +2655,7 @@ local function createFinder(D)
             end
             joining=false
             if serverIsFull and failedJobId then
+                knownFullServers[tostring(failedJobId)]=os.clock()+30
                 -- Roblox is the final authority: once it rejects this instance as full,
                 -- immediately change every visible copy from JOIN to FULL.
                 for _,item in ipairs(feed) do
