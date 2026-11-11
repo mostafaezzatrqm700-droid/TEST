@@ -3107,8 +3107,8 @@ local function run()
                 end
 
                 local eggUid=tostring(record.Uid)
-                local eggModel=workspace:FindFirstChild('AreaEggSlotsClient')
-                eggModel=eggModel and eggModel:FindFirstChild(eggUid)
+                local eggFolder=workspace:FindFirstChild('AreaEggSlotsClient')
+                local eggModel=eggFolder and eggFolder:FindFirstChild(eggUid)
                 local pickupPos=record.BottomCFrame.Position
                 if eggModel then
                     local hitbox=eggModel:FindFirstChild('Hitbox',true) or eggModel:FindFirstChild('SmartPromptPart',true)
@@ -3117,39 +3117,44 @@ local function run()
                     end
                 end
 
-                -- Walk to the egg using the Humanoid's real WalkSpeed.
-                -- This uses normal character movement instead of moving the root part directly.
-                local targetPosition=pickupPos+Vector3.new(0,2.5,0)
+                -- Teleport directly to the egg first. If that point is unsafe or rejected,
+                -- try nearby landing positions so the player does not have to cross hazards.
                 humanoid.Sit=false
                 humanoid.PlatformStand=false
-                root.AssemblyLinearVelocity=Vector3.zero
-                root.AssemblyAngularVelocity=Vector3.zero
-                local horizontalStart=Vector3.new(root.Position.X,0,root.Position.Z)
-                local horizontalTarget=Vector3.new(targetPosition.X,0,targetPosition.Z)
-                local travelDistance=(horizontalTarget-horizontalStart).Magnitude
-                local walkSpeed=math.max(tonumber(humanoid.WalkSpeed) or 16,1)
-                local timeout=math.max(travelDistance/walkSpeed+12,15)
-                local startedAt=os.clock()
-                local lastMoveCommand=0
-                humanoid:MoveTo(targetPosition)
-                while humanoid.Health>0 do
-                    local currentHorizontal=Vector3.new(root.Position.X,0,root.Position.Z)
-                    local remaining=(horizontalTarget-currentHorizontal).Magnitude
-                    if remaining<=3 then
-                        break
+                local offsets={
+                    Vector3.new(0,4,0),
+                    Vector3.new(4,4,0),Vector3.new(-4,4,0),
+                    Vector3.new(0,4,4),Vector3.new(0,4,-4),
+                    Vector3.new(6,5,6),Vector3.new(-6,5,6),
+                    Vector3.new(6,5,-6),Vector3.new(-6,5,-6),
+                    Vector3.new(0,8,0)
+                }
+                local lastPositionError=nil
+                for attempt=1,3 do
+                    if not player.Character or player.Character~=character or humanoid.Health<=0 then
+                        error('Character died or respawned before teleport completed')
                     end
-                    if os.clock()-startedAt>timeout then
-                        error('Walking to egg timed out')
+                    for _,offset in ipairs(offsets) do
+                        local destination=pickupPos+offset
+                        local destinationCFrame=CFrame.new(destination, destination+root.CFrame.LookVector)
+                        local moved=pcall(function()
+                            character:PivotTo(destinationCFrame)
+                            root.AssemblyLinearVelocity=Vector3.zero
+                            root.AssemblyAngularVelocity=Vector3.zero
+                        end)
+                        if moved then
+                            game:GetService('RunService').Heartbeat:Wait()
+                            if humanoid.Health>0 and root.Parent and (root.Position-destination).Magnitude<=12 then
+                                return
+                            end
+                            lastPositionError='Game physics or server correction rejected the teleport'
+                        else
+                            lastPositionError='Teleport command failed'
+                        end
                     end
-                    if os.clock()-lastMoveCommand>=6 then
-                        humanoid:MoveTo(targetPosition)
-                        lastMoveCommand=os.clock()
-                    end
-                    game:GetService('RunService').Heartbeat:Wait()
+                    task.wait(0.15*attempt)
                 end
-                if humanoid.Health<=0 then
-                    error('Character died while walking to egg')
-                end
+                error(lastPositionError or 'Teleport failed after 3 attempts')
             end)
             if not ok then
                 warn('[UNKNOWN SERVER EGGS STEAL] '..tostring(err))
