@@ -2632,12 +2632,53 @@ local function createFinder(D)
     panel.Visible=true
     local failed=Teleports.TeleportInitFailed:Connect(function(who,_,message)
         if who==D.player then
-            joining=false;queryStatus='Join failed: '..tostring(message)
-            if autoJoinEnabled and autoJoinCandidateIndex<=#autoJoinCandidates then
-                autoJoinCandidateIndex+=1
-                autoJoinRetryRequested=true
-                queryStatus='Auto Join: teleport failed; trying the next candidate'
+            local failureText=tostring(message or 'Teleport failed')
+            local lowerFailure=failureText:lower()
+            local serverIsFull=lowerFailure:find('full',1,true)~=nil
+            local failedJobId=nil
+            if joiningKey then
+                for _,item in ipairs(feed) do
+                    if item.key==joiningKey then failedJobId=item.jobId;break end
+                end
+                if not failedJobId then
+                    for _,item in ipairs(autoJoinFeed) do
+                        if item.key==joiningKey then failedJobId=item.jobId;break end
+                    end
+                end
             end
+            joining=false
+            if serverIsFull and failedJobId then
+                -- Roblox is the final authority: once it rejects this instance as full,
+                -- immediately change every visible copy from JOIN to FULL.
+                for _,item in ipairs(feed) do
+                    if item.jobId==failedJobId then item.full=true end
+                end
+                for _,item in ipairs(autoJoinFeed) do
+                    if item.jobId==failedJobId then item.full=true end
+                end
+                for _,card in pairs(cardsByKey) do
+                    if card.entry and card.entry.jobId==failedJobId then
+                        card.entry.full=true
+                        updateCard(card,card.entry,card.row.LayoutOrder or 1)
+                    end
+                end
+                lastRender=nil
+                queryStatus='Server is FULL (Roblox rejected the join)'
+                if autoJoinEnabled and autoJoinCandidateIndex<=#autoJoinCandidates then
+                    autoJoinCandidateIndex+=1
+                    autoJoinRetryRequested=true
+                    queryStatus='Server FULL; Auto Join is trying the next candidate'
+                end
+            else
+                queryStatus='Join failed: '..failureText
+                if autoJoinEnabled and autoJoinCandidateIndex<=#autoJoinCandidates then
+                    autoJoinCandidateIndex+=1
+                    autoJoinRetryRequested=true
+                    queryStatus='Auto Join: teleport failed; trying the next candidate'
+                end
+            end
+            joiningKey=nil
+            render()
         end
     end)
     D.gui.Destroying:Connect(function() active=false; failed:Disconnect();if localHighlight then localHighlight:Destroy() end end)
