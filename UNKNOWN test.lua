@@ -2726,28 +2726,37 @@ local function launchUnknown()
         if type(getgenv) == "function" then runtimeEnv = getgenv() end
     end)
     local runningJob = "__UNKNOWN_RUNNING_JOB"
-    local playerGui = player:FindFirstChildOfClass("PlayerGui")
-    local existingFinder = playerGui and playerGui:FindFirstChild("UNKNOWN")
+    local playerGui = player:FindFirstChildOfClass("PlayerGui") or player:WaitForChild("PlayerGui", 15)
+    if not playerGui then
+        return false, "PlayerGui is unavailable."
+    end
+    local existingFinder = playerGui:FindFirstChild("UNKNOWN")
     if type(runtimeEnv) == "table" and runtimeEnv[runningJob] == game.JobId then
-        -- Ignore a repeat launch only while the actual Finder UI still exists.
-        -- A stale runtime flag must not block startup after the UI was closed/destroyed.
         if existingFinder then
-            return
+            return true
         end
         runtimeEnv[runningJob] = nil
     end
 
     local loadOk, loadError = pcall(startUnknown)
-    if loadOk then
-        if type(runtimeEnv) == "table" then
-            runtimeEnv[runningJob] = game.JobId
-        end
-    else
+    if not loadOk then
         if type(runtimeEnv) == "table" and runtimeEnv[runningJob] == game.JobId then
             runtimeEnv[runningJob] = nil
         end
-        warn("[UNKNOWN] Finder startup failed: " .. tostring(loadError))
+        return false, tostring(loadError)
     end
+
+    -- Do not report success until the Finder ScreenGui is actually parented.
+    local createdFinder = playerGui:FindFirstChild("UNKNOWN")
+    if not createdFinder then
+        if type(runtimeEnv) == "table" then runtimeEnv[runningJob] = nil end
+        return false, "The Finder window was not created. Please try executing the loader again."
+    end
+
+    if type(runtimeEnv) == "table" then
+        runtimeEnv[runningJob] = game.JobId
+    end
+    return true
 end
 
 local function httpRequest(options)
@@ -2940,12 +2949,19 @@ local function verifyKey()
     end
 
     setStatus("Key accepted. Loading UNKNOWN...", Color3.fromRGB(100, 220, 140))
-    verifyButton.Text = "ACCEPTED"
+    verifyButton.Text = "LOADING..."
 
-    task.wait(0.35)
+    task.wait(0.2)
+    local launchOk, launchError = launchUnknown()
+    if not launchOk then
+        setStatus("Finder failed to open: " .. tostring(launchError), Color3.fromRGB(255, 100, 100))
+        verifyButton.Text = "TRY AGAIN"
+        busy = false
+        return
+    end
+
+    -- Close the key window only after the Finder GUI is confirmed to exist.
     gui:Destroy()
-
-    launchUnknown()
 
     -- Revalidate the active key while UNKNOWN is running.
     -- Explicit invalid/expired responses close the Finder; transient network errors do not.
