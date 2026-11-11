@@ -3170,38 +3170,40 @@ local function run()
                         table.insert(excluded,eggModel)
                     end
                     rayParams.FilterDescendantsInstances=excluded
-                    local offsets={
-                        Vector3.new(5,0,0),Vector3.new(-5,0,0),
-                        Vector3.new(0,0,5),Vector3.new(0,0,-5),
-                        Vector3.new(4,0,4),Vector3.new(-4,0,4),
-                        Vector3.new(4,0,-4),Vector3.new(-4,0,-4)
-                    }
-                    for _,offset in ipairs(offsets) do
+                    -- Sample a wider 360-degree ring of actual floor positions around the egg.
+                    -- Keep every candidate inside the server pickup radius; never substitute a teleport.
+                    for sampleIndex=0,15 do
+                        local angle=(math.pi*2*sampleIndex)/16
+                        local offset=Vector3.new(math.cos(angle)*6.25,0,math.sin(angle)*6.25)
                         local sample=pickupPos+offset
-                        local rayOrigin=sample+Vector3.new(0,12,0)
-                        local floorHit=workspace:Raycast(rayOrigin,Vector3.new(0,-40,0),rayParams)
-                        local goal=floorHit and (floorHit.Position+Vector3.new(0,humanoid.HipHeight+root.Size.Y*0.5,0)) or sample
-                        local candidate=PathfindingService:CreatePath({
-                            AgentRadius=1.5,
-                            AgentHeight=5,
-                            AgentCanJump=true,
-                            WaypointSpacing=3
-                        })
-                        local computed=pcall(function()
-                            candidate:ComputeAsync(root.Position,goal)
-                        end)
-                        if computed and candidate.Status==Enum.PathStatus.Success then
-                            local candidateWaypoints=candidate:GetWaypoints()
-                            local length=0
-                            local previous=root.Position
-                            for _,point in ipairs(candidateWaypoints) do
-                                length=length+(point.Position-previous).Magnitude
-                                previous=point.Position
-                            end
-                            if length<bestLength then
-                                bestLength=length
-                                path=candidate
-                                waypoints=candidateWaypoints
+                        local rayOrigin=sample+Vector3.new(0,16,0)
+                        local floorHit=workspace:Raycast(rayOrigin,Vector3.new(0,-60,0),rayParams)
+                        if floorHit then
+                            local goal=floorHit.Position+Vector3.new(0,humanoid.HipHeight+root.Size.Y*0.5,0)
+                            if (goal-pickupPos).Magnitude<=8 then
+                                local candidate=PathfindingService:CreatePath({
+                                    AgentRadius=1.25,
+                                    AgentHeight=5,
+                                    AgentCanJump=true,
+                                    WaypointSpacing=2.5
+                                })
+                                local computed=pcall(function()
+                                    candidate:ComputeAsync(root.Position,goal)
+                                end)
+                                if computed and candidate.Status==Enum.PathStatus.Success then
+                                    local candidateWaypoints=candidate:GetWaypoints()
+                                    local length=0
+                                    local previous=root.Position
+                                    for _,point in ipairs(candidateWaypoints) do
+                                        length=length+(point.Position-previous).Magnitude
+                                        previous=point.Position
+                                    end
+                                    if length<bestLength then
+                                        bestLength=length
+                                        path=candidate
+                                        waypoints=candidateWaypoints
+                                    end
+                                end
                             end
                         end
                     end
@@ -3258,7 +3260,7 @@ local function run()
                             lastPathError='Reached the end of the path but the egg is still too far away'
                         end
                     else
-                        lastPathError='No walkable path found near the egg; all 8 nearby floor points failed'
+                        lastPathError='No safe walking path was found to this egg; all 16 nearby floor samples failed'
                     end
                     humanoid:MoveTo(root.Position)
                     task.wait(0.25*attempt)
