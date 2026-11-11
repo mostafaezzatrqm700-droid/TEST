@@ -1007,10 +1007,48 @@ local function createFinder(D)
     local errorOverlay=D.make('Frame',{Name='JoinErrorsPanel',Position=UDim2.fromScale(0.04,0.12),Size=UDim2.fromScale(0.92,0.78),BackgroundColor3=Color3.fromRGB(12,8,25),BorderSizePixel=0,Visible=false,ZIndex=80},panel)
     D.make('UICorner',{CornerRadius=UDim.new(0,8)},errorOverlay)
     D.make('UIStroke',{Color=Color3.fromRGB(190,65,95),Thickness=2},errorOverlay)
-    local errorTitle=D.label(errorOverlay,'JOIN ERRORS',UDim2.fromOffset(12,8),UDim2.new(1,-140,0,30),Color3.fromRGB(255,235,245),17)
+    local errorTitle=D.label(errorOverlay,'JOIN ERRORS',UDim2.fromOffset(12,8),UDim2.new(1,-220,0,30),Color3.fromRGB(255,235,245),17)
     errorTitle.ZIndex=81
+    local copyLatestErrorButton=Instance.new('TextButton')
+    copyLatestErrorButton.Name='CopyLatestErrorButton'
+    copyLatestErrorButton.Text='COPY LAST'
+    copyLatestErrorButton.Position=UDim2.new(1,-204,0,8)
+    copyLatestErrorButton.Size=UDim2.fromOffset(76,28)
+    copyLatestErrorButton.BackgroundColor3=Color3.fromRGB(55,105,155)
+    copyLatestErrorButton.TextColor3=Color3.new(1,1,1)
+    copyLatestErrorButton.Font=Enum.Font.GothamBold
+    copyLatestErrorButton.TextSize=11
+    copyLatestErrorButton.ZIndex=90
+    copyLatestErrorButton.Parent=errorOverlay
+    local copyLatestCorner=Instance.new('UICorner')
+    copyLatestCorner.CornerRadius=UDim.new(0,5)
+    copyLatestCorner.Parent=copyLatestErrorButton
     local clearErrorsButton=D.make('TextButton',{Text='CLEAR',Position=UDim2.new(1,-120,0,8),Size=UDim2.fromOffset(54,28),BackgroundColor3=Color3.fromRGB(105,65,135),TextColor3=Color3.new(1,1,1),TextSize=11,ZIndex=81},errorOverlay)
     local closeErrorsButton=D.make('TextButton',{Text='X',Position=UDim2.new(1,-58,0,8),Size=UDim2.fromOffset(46,28),BackgroundColor3=Color3.fromRGB(145,48,58),TextColor3=Color3.new(1,1,1),TextSize=13,ZIndex=81},errorOverlay)
+    copyLatestErrorButton.Activated:Connect(function()
+        local item=joinErrors[1]
+        if not item then
+            copyLatestErrorButton.Text='NO ERRORS'
+            return
+        end
+        local fullError='['..item.time..'] '..item.source..' / '..item.stage..'\\n'..item.message
+        local copied=false
+        if type(setclipboard)=='function' then
+            copied=pcall(setclipboard,fullError)
+        elseif type(toclipboard)=='function' then
+            copied=pcall(toclipboard,fullError)
+        elseif type(to_clipboard)=='function' then
+            copied=pcall(to_clipboard,fullError)
+        end
+        copyLatestErrorButton.Text=copied and 'COPIED!' or 'COPY FAILED'
+        copyLatestErrorButton.BackgroundColor3=copied and Color3.fromRGB(45,135,80) or Color3.fromRGB(145,55,55)
+        task.delay(2,function()
+            if copyLatestErrorButton and copyLatestErrorButton.Parent then
+                copyLatestErrorButton.Text='COPY LAST'
+                copyLatestErrorButton.BackgroundColor3=Color3.fromRGB(55,105,155)
+            end
+        end)
+    end)
     local errorList=D.make('ScrollingFrame',{Name='JoinErrorList',Position=UDim2.fromOffset(10,46),Size=UDim2.new(1,-20,1,-56),BackgroundColor3=Color3.fromRGB(20,14,36),BorderSizePixel=0,CanvasSize=UDim2.new(),ScrollBarThickness=6,ScrollBarImageColor3=Color3.fromRGB(190,100,220),ZIndex=81},errorOverlay)
     D.make('UICorner',{CornerRadius=UDim.new(0,5)},errorList)
     local errorLayout=D.make('UIListLayout',{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder},errorList)
