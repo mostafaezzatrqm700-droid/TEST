@@ -3152,133 +3152,199 @@ local function run()
                 local PathfindingService=game:GetService('PathfindingService')
                 local reached=false
                 local lastPathError='Could not calculate a path to the egg'
+                local floorHits,nearbyGoals,computeErrors,noPathResults=0,0,0,0
+                local lastComputeError,lastPathStatus='',''
+                local rayParams=RaycastParams.new()
+                rayParams.FilterType=Enum.RaycastFilterType.Exclude
+                local excluded={character}
+                if eggModel then
+                    table.insert(excluded,eggModel)
+                end
+                rayParams.FilterDescendantsInstances=excluded
 
-                -- Walk using the game's normal character controller; never move the root by CFrame/PivotTo.
-                for attempt=1,3 do
-                    if not player.Character or player.Character~=character or humanoid.Health<=0 or not root.Parent then
-                        error('Character died or respawned while walking to the egg')
-                    end
-                    -- The egg's own hitbox is often not a walkable navigation point.
-                    -- Try several reachable floor positions around it, staying within pickup range.
-                    local path=nil
-                    local waypoints=nil
-                    local bestLength=math.huge
-                    local floorHits,nearbyGoals,computeErrors,noPathResults=0,0,0,0
-                    local lastComputeError,lastPathStatus='',''
-                    local rayParams=RaycastParams.new()
-                    rayParams.FilterType=Enum.RaycastFilterType.Exclude
-                    local excluded={character}
-                    if eggModel then
-                        table.insert(excluded,eggModel)
-                    end
-                    rayParams.FilterDescendantsInstances=excluded
-                    -- Sample a wider 360-degree ring of actual floor positions around the egg.
-                    -- Keep every candidate inside the server pickup radius; never substitute a teleport.
-                    for sampleIndex=0,15 do
-                        local angle=(math.pi*2*sampleIndex)/16
-                        local offset=Vector3.new(math.cos(angle)*6.25,0,math.sin(angle)*6.25)
-                        local sample=pickupPos+offset
-                        local rayOrigin=sample+Vector3.new(0,16,0)
-                        local floorHit=workspace:Raycast(rayOrigin,Vector3.new(0,-60,0),rayParams)
-                        if floorHit then
-                            floorHits=floorHits+1
-                            local goal=floorHit.Position+Vector3.new(0,humanoid.HipHeight+root.Size.Y*0.5,0)
-                            if (goal-pickupPos).Magnitude<=8 then
-                                nearbyGoals=nearbyGoals+1
-                                local candidate=PathfindingService:CreatePath({
-                                    AgentRadius=1.25,
-                                    AgentHeight=5,
-                                    AgentCanJump=true,
-                                    WaypointSpacing=2.5
-                                })
-                                local computed,computeError=pcall(function()
-                                    candidate:ComputeAsync(root.Position,goal)
-                                end)
-                                if not computed then
-                                    computeErrors=computeErrors+1
-                                    lastComputeError=tostring(computeError)
-                                elseif candidate.Status==Enum.PathStatus.Success then
-                                    local candidateWaypoints=candidate:GetWaypoints()
-                                    local length=0
-                                    local previous=root.Position
-                                    for _,point in ipairs(candidateWaypoints) do
-                                        length=length+(point.Position-previous).Magnitude
-                                        previous=point.Position
-                                    end
-                                    if length<bestLength then
-                                        bestLength=length
-                                        path=candidate
-                                        waypoints=candidateWaypoints
-                                    end
-                                elseif candidate.Status~=Enum.PathStatus.Success then
-                                    noPathResults=noPathResults+1
-                                    lastPathStatus=tostring(candidate.Status)
-                                end
-                            end
+                -- Build valid pickup positions once. Long trips are then split into short,
+                -- ordinary walking segments so ComputeAsync never receives a huge request.
+                local pickupGoals={}
+                for sampleIndex=0,15 do
+                    local angle=(math.pi*2*sampleIndex)/16
+                    local offset=Vector3.new(math.cos(angle)*6.25,0,math.sin(angle)*6.25)
+                    local sample=pickupPos+offset
+                    local floorHit=workspace:Raycast(
+                        sample+Vector3.new(0,16,0),
+                        Vector3.new(0,-60,0),
+                        rayParams
+                    )
+                    if floorHit then
+                        floorHits=floorHits+1
+                        local goal=floorHit.Position+Vector3.new(0,humanoid.HipHeight+root.Size.Y*0.5,0)
+                        if (goal-pickupPos).Magnitude<=8 then
+                            nearbyGoals=nearbyGoals+1
+                            table.insert(pickupGoals,goal)
                         end
                     end
-                    if path and waypoints then
-                        local blockedAt=nil
-                        local blockedConnection=path.Blocked:Connect(function(index)
-                            if index>=1 then blockedAt=index end
-                        end)
-                        local pathSucceeded=true
-                        for index,waypoint in ipairs(waypoints) do
-                            if not player.Character or player.Character~=character or humanoid.Health<=0 then
-                                pathSucceeded=false
-                                lastPathError='Character died or respawned while following the path'
+                end
+
+                if #pickupGoals==0 then
+                    lastPathError=string.format(
+                        'No safe pickup floor found. Floor hits: %d/16; pickup-range goals: %d',
+                        floorHits,nearbyGoals
+                    )
+                else
+                    -- Keep each path request comfortably below the long-request limit.
+                    local maxLegDistance=180
+                    local intermediateDistance=140
+                    local maxSegments=60
+
+                    for attempt=1,3 do
+                        local attemptFailed=false
+                        for segmentIndex=1,maxSegments do
+                            if not player.Character or player.Character~=character or humanoid.Health<=0 or not root.Parent then
+                                error('Character died or respawned while walking to the egg')
+                            end
+                            if (root.Position-pickupPos).Magnitude<=8 then
+                                reached=true
                                 break
                             end
-                            if blockedAt and blockedAt>=index then
-                                pathSucceeded=false
-                                lastPathError='Path became blocked; recalculating'
+
+                            local path=nil
+                            local waypoints=nil
+                            local bestLength=math.huge
+
+                            -- For distant destinations, raycast a grounded intermediate point
+                            -- in the same general direction, then calculate only that short leg.
+                            for _,finalGoal in ipairs(pickupGoals) do
+                                local toGoal=finalGoal-root.Position
+                                local goalDistance=toGoal.Magnitude
+                                local segmentGoal=finalGoal
+                                if goalDistance>maxLegDistance then
+                                    local horizontalDirection=Vector3.new(toGoal.X,0,toGoal.Z)
+                                    if horizontalDirection.Magnitude>0.01 then
+                                        local sample=root.Position+horizontalDirection.Unit*intermediateDistance
+                                        local floorHit=workspace:Raycast(
+                                            sample+Vector3.new(0,100,0),
+                                            Vector3.new(0,-300,0),
+                                            rayParams
+                                        )
+                                        if floorHit then
+                                            segmentGoal=floorHit.Position+Vector3.new(0,humanoid.HipHeight+root.Size.Y*0.5,0)
+                                        else
+                                            segmentGoal=nil
+                                        end
+                                    else
+                                        segmentGoal=nil
+                                    end
+                                end
+
+                                if segmentGoal and (segmentGoal-root.Position).Magnitude<=maxLegDistance then
+                                    local candidate=PathfindingService:CreatePath({
+                                        AgentRadius=1.25,
+                                        AgentHeight=5,
+                                        AgentCanJump=true,
+                                        WaypointSpacing=2.5
+                                    })
+                                    local computed,computeError=pcall(function()
+                                        candidate:ComputeAsync(root.Position,segmentGoal)
+                                    end)
+                                    if not computed then
+                                        computeErrors=computeErrors+1
+                                        lastComputeError=tostring(computeError)
+                                    elseif candidate.Status==Enum.PathStatus.Success then
+                                        local candidateWaypoints=candidate:GetWaypoints()
+                                        local length=0
+                                        local previous=root.Position
+                                        for _,point in ipairs(candidateWaypoints) do
+                                            length=length+(point.Position-previous).Magnitude
+                                            previous=point.Position
+                                        end
+                                        if length<bestLength then
+                                            bestLength=length
+                                            path=candidate
+                                            waypoints=candidateWaypoints
+                                        end
+                                    else
+                                        noPathResults=noPathResults+1
+                                        lastPathStatus=tostring(candidate.Status)
+                                    end
+                                end
+                            end
+
+                            if not path or not waypoints then
+                                lastPathError=string.format(
+                                    'No safe walking segment. Floor hits: %d/16; pickup-range goals: %d; Pathfinding failures: %d; Compute errors: %d; Last status: %s; Last error: %s',
+                                    floorHits,nearbyGoals,noPathResults,computeErrors,
+                                    lastPathStatus~='' and lastPathStatus or 'none',
+                                    lastComputeError~='' and lastComputeError or 'none'
+                                )
+                                attemptFailed=true
                                 break
                             end
-                            if waypoint.Action==Enum.PathWaypointAction.Jump then
-                                humanoid.Jump=true
-                            end
-                            humanoid:MoveTo(waypoint.Position)
-                            local distance=(root.Position-waypoint.Position).Magnitude
-                            local speed=math.max(8,humanoid.WalkSpeed)
-                            local timeout=math.clamp(distance/speed+4,6,18)
-                            local started=os.clock()
-                            local waypointReached=false
-                            while os.clock()-started<timeout do
+
+                            local blockedAt=nil
+                            local blockedConnection=path.Blocked:Connect(function(index)
+                                if index>=1 then blockedAt=index end
+                            end)
+                            local pathSucceeded=true
+                            for index,waypoint in ipairs(waypoints) do
                                 if not player.Character or player.Character~=character or humanoid.Health<=0 then
+                                    pathSucceeded=false
+                                    lastPathError='Character died or respawned while following the path'
                                     break
                                 end
                                 if blockedAt and blockedAt>=index then
+                                    pathSucceeded=false
+                                    lastPathError='Path became blocked; recalculating'
                                     break
                                 end
-                                if (root.Position-waypoint.Position).Magnitude<=3.5 then
-                                    waypointReached=true
+                                if waypoint.Action==Enum.PathWaypointAction.Jump then
+                                    humanoid.Jump=true
+                                end
+                                humanoid:MoveTo(waypoint.Position)
+                                local distance=(root.Position-waypoint.Position).Magnitude
+                                local speed=math.max(8,humanoid.WalkSpeed)
+                                local timeout=math.clamp(distance/speed+4,6,18)
+                                local started=os.clock()
+                                local waypointReached=false
+                                while os.clock()-started<timeout do
+                                    if not player.Character or player.Character~=character or humanoid.Health<=0 then
+                                        break
+                                    end
+                                    if blockedAt and blockedAt>=index then
+                                        break
+                                    end
+                                    if (root.Position-waypoint.Position).Magnitude<=3.5 then
+                                        waypointReached=true
+                                        break
+                                    end
+                                    task.wait(0.1)
+                                end
+                                if not waypointReached then
+                                    pathSucceeded=false
+                                    lastPathError=(blockedAt and 'Path became blocked; recalculating') or 'Could not reach a path waypoint'
                                     break
                                 end
-                                task.wait(0.1)
                             end
-                            if not waypointReached then
-                                pathSucceeded=false
-                                lastPathError=(blockedAt and 'Path became blocked; recalculating') or 'Could not reach a path waypoint'
+                            blockedConnection:Disconnect()
+
+                            if not pathSucceeded then
+                                attemptFailed=true
+                                break
+                            end
+                            -- Recalculate from the character's new position for the next short leg.
+                            if (root.Position-pickupPos).Magnitude<=8 then
+                                reached=true
                                 break
                             end
                         end
-                        blockedConnection:Disconnect()
-                        if pathSucceeded and (root.Position-pickupPos).Magnitude<=8 then
-                            reached=true
+
+                        if reached then
                             break
-                        elseif pathSucceeded then
-                            lastPathError='Reached the end of the path but the egg is still too far away'
                         end
-                    else
-                        lastPathError=string.format(
-                            'No safe walking path. Floor hits: %d/16; pickup-range goals: %d; Pathfinding failures: %d; Compute errors: %d; Last status: %s; Last error: %s',
-                            floorHits,nearbyGoals,noPathResults,computeErrors,
-                            lastPathStatus~='' and lastPathStatus or 'none',
-                            lastComputeError~='' and lastComputeError or 'none'
-                        )
+                        humanoid:MoveTo(root.Position)
+                        if not attemptFailed then
+                            lastPathError='Maximum number of short walking segments reached before the egg'
+                        end
+                        task.wait(0.25*attempt)
                     end
-                    humanoid:MoveTo(root.Position)
-                    task.wait(0.25*attempt)
                 end
 
                 if not reached then
