@@ -3017,8 +3017,12 @@ local function run()
 
         local function moveToListedEgg(uid)
             local ok,err=pcall(function()
-                local character,humanoid,root=currentRoot()
-                if not root then error('Character is not ready') end
+                local character=player.Character
+                local humanoid=character and character:FindFirstChildOfClass('Humanoid')
+                local root=character and character:FindFirstChild('HumanoidRootPart')
+                if not character or not humanoid or humanoid.Health<=0 or not root then
+                    error('Character is not ready')
+                end
 
                 local snapshot=EggState.ReadFieldEggs()
                 if type(snapshot)~='table' or type(snapshot.Records)~='table' then
