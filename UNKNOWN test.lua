@@ -804,8 +804,6 @@ local function createFinder(D)
     D.make('UICorner',{CornerRadius=UDim.new(0,5)},settingsClose)
     local autoExecuteToggle=D.make('TextButton',{Name='AutoExecuteToggle',Text='',Position=UDim2.fromOffset(14,62),Size=UDim2.new(1,-28,0,46),BackgroundColor3=Color3.fromRGB(67,70,80),TextColor3=Color3.fromRGB(255,255,255),TextSize=14,Font=Enum.Font.GothamBold,BorderSizePixel=0,ZIndex=31},settingsOverlay)
     D.make('UICorner',{CornerRadius=UDim.new(0,6)},autoExecuteToggle)
-    local autoStealToggle=D.make('TextButton',{Name='AutoStealToggle',Text='AUTO STEAL: OFF',Position=UDim2.fromOffset(14,178),Size=UDim2.new(1,-28,0,46),BackgroundColor3=Color3.fromRGB(155,48,52),TextColor3=Color3.fromRGB(255,255,255),TextSize=14,Font=Enum.Font.GothamBold,BorderSizePixel=0,ZIndex=31},settingsOverlay)
-    D.make('UICorner',{CornerRadius=UDim.new(0,6)},autoStealToggle)
     local discordAccountButton=D.make('TextButton',{Name='DiscordAccountButton',Text='DISCORD ACCOUNT',Position=UDim2.fromOffset(14,120),Size=UDim2.new(1,-28,0,46),BackgroundColor3=Color3.fromRGB(88,70,150),TextColor3=Color3.fromRGB(255,255,255),TextSize=14,Font=Enum.Font.GothamBold,BorderSizePixel=0,ZIndex=31},settingsOverlay)
     D.make('UICorner',{CornerRadius=UDim.new(0,6)},discordAccountButton)
     discordAccountButton.Activated:Connect(function()
@@ -847,23 +845,12 @@ local function createFinder(D)
         saveSettings()
         if not autoExecuteEnabled then autoExecuteQueued=false end
     end)
-    local function refreshAutoStealToggle()
-        local enabled=D.getAutoSteal and D.getAutoSteal() or false
-        autoStealToggle.Text=enabled and 'AUTO STEAL: ON' or 'AUTO STEAL: OFF'
-        autoStealToggle.BackgroundColor3=enabled and Color3.fromRGB(30,155,85) or Color3.fromRGB(155,48,52)
-    end
-    refreshAutoStealToggle()
-    autoStealToggle.Activated:Connect(function()
-        if type(D.setAutoSteal)=='function' then D.setAutoSteal(not (D.getAutoSteal and D.getAutoSteal() or false)) end
-        refreshAutoStealToggle()
-    end)
-    local stopScriptButton=D.make('TextButton',{Name='StopScriptButton',Text='STOP SCRIPT',Position=UDim2.fromOffset(14,236),Size=UDim2.new(1,-28,0,46),BackgroundColor3=Color3.fromRGB(155,42,48),TextColor3=Color3.fromRGB(255,255,255),TextSize=15,Font=Enum.Font.GothamBold,BorderSizePixel=0,ZIndex=31},settingsOverlay)
+    local stopScriptButton=D.make('TextButton',{Name='StopScriptButton',Text='STOP SCRIPT',Position=UDim2.fromOffset(14,178),Size=UDim2.new(1,-28,0,46),BackgroundColor3=Color3.fromRGB(155,42,48),TextColor3=Color3.fromRGB(255,255,255),TextSize=15,Font=Enum.Font.GothamBold,BorderSizePixel=0,ZIndex=31},settingsOverlay)
     stopScriptButton.Activated:Connect(function()
         stopScriptButton.Text='STOPPING...'
         stopScriptButton.Active=false
         autoExecuteEnabled=false
         saveSettings()
-        if type(D.setAutoSteal)=='function' then D.setAutoSteal(false) end
         if type(D.stopScript)=='function' then
             D.stopScript()
         elseif D.gui and D.gui.Parent then
@@ -2982,7 +2969,6 @@ local function run()
     assert(type(Assets.Directory)=='table' and States and States.Slot~=nil,'Game schema changed')
     local latestEntries={}
     local latestMetadata=nil
-    local autoStealEnabled=false
     local scanCycle
     pcall(function() scanCycle=module('Shared.Util.AreaEggCycle') end)
     local function parseValue(text)
@@ -3289,117 +3275,10 @@ local function run()
             if serverEggGui and serverEggGui.Parent then serverEggGui:Destroy() end
         end)
     end
-    createFinder({gui=gui,localPanel={Visible=false},player=player,make=make,label=label,entries=function() return os.clock()-lastScan<10 and latestEntries or {} end,metadata=function() return latestMetadata end,ready=function() return lastScan>0 and os.clock()-lastScan<10 end,parseValue=parseValue,money=money,stopFarm=function() end,getAutoSteal=function() return autoStealEnabled end,setAutoSteal=function(value) autoStealEnabled=value==true end,stopScript=function() alive=false; if errorConnection then pcall(function() errorConnection:Disconnect() end);errorConnection=nil end; if errorGui and errorGui.Parent then pcall(function() errorGui:Destroy() end) end; if gui and gui.Parent then pcall(function() gui:Destroy() end) end end})
+    createFinder({gui=gui,localPanel={Visible=false},player=player,make=make,label=label,entries=function() return os.clock()-lastScan<10 and latestEntries or {} end,metadata=function() return latestMetadata end,ready=function() return lastScan>0 and os.clock()-lastScan<10 end,parseValue=parseValue,money=money,stopFarm=function() end,stopScript=function() alive=false; if errorConnection then pcall(function() errorConnection:Disconnect() end);errorConnection=nil end; if errorGui and errorGui.Parent then pcall(function() errorGui:Destroy() end) end; if gui and gui.Parent then pcall(function() gui:Destroy() end) end end})
     gui:SetAttribute("UNKNOWN_READY", true)
     local notified={}
-    local autoStealBusy=false
-    local autoStealLastUid=nil
-    local autoStealLastAttempt=0
-    local autoStealRetryAt={}
-    local function resolveSafeZone()
-        local world=workspace:FindFirstChild('World')
-        local candidates={
-            world and world:FindFirstChild('Build') and world.Build:FindFirstChild('MainMap') and world.Build.MainMap:FindFirstChild('SpawnTarget'),
-            workspace:FindFirstChild('SpawnTarget',true),
-            workspace:FindFirstChildOfClass('SpawnLocation'),
-            world and world:FindFirstChild('Areas') and world.Areas:FindFirstChild('StartArea')
-        }
-        for _,obj in ipairs(candidates) do
-            if obj then
-                local pos
-                if obj:IsA('BasePart') then pos=obj.Position
-                elseif obj:IsA('Model') then local ok,cf=pcall(function() return obj:GetBoundingBox() end);if ok then pos=cf.Position end
-                elseif obj:IsA('Attachment') then pos=obj.WorldPosition end
-                if pos then return pos+Vector3.new(0,3,0) end
-            end
-        end
-        return nil
-    end
-    local function currentRoot()
-        local character=player.Character
-        local humanoid=character and character:FindFirstChildOfClass('Humanoid')
-        local root=character and character:FindFirstChild('HumanoidRootPart')
-        if not character or not humanoid or humanoid.Health<=0 or not root then return nil end
-        return character,humanoid,root
-    end
-    local function slotKeyFor(record)
-        local ok,slotId=pcall(module,'Shared.Util.SlotId')
-        if not ok or type(slotId)~='table' or type(slotId.LooksLikeFirstAreaUid)~='function' or type(slotId.SlotKey)~='function' then return nil end
-        local good,isFirst=pcall(slotId.LooksLikeFirstAreaUid,tostring(record.Uid))
-        if not good or not isFirst then return nil end
-        local success,key=pcall(slotId.SlotKey,record.AreaId,record.NestId or tostring(record.Uid):match('(Slot_%d+)'))
-        return success and key or nil
-    end
-    local function autoStealAttempt()
-        if not autoStealEnabled or autoStealBusy or os.clock()-autoStealLastAttempt<1 then return end
-        autoStealBusy=true;autoStealLastAttempt=os.clock()
-        local ok,err=pcall(function()
-            local character,humanoid,root=currentRoot()
-            if not root then return end
-            local snapshot=EggState.ReadFieldEggs()
-            if type(snapshot)~='table' or type(snapshot.Records)~='table' then return end
-            local targetUid
-            for _,entry in ipairs(latestEntries) do
-                if entry.uid and (not targetUid or (entry.tier or 0)>(targetUid.tier or 0) or ((entry.tier or 0)==(targetUid.tier or 0) and (entry.rate or 0)>(targetUid.rate or 0))) then targetUid=entry end
-            end
-            local wanted=targetUid and tostring(targetUid.uid) or nil
-            local record
-            if wanted then
-                for key,value in pairs(snapshot.Records) do if tostring(value.Uid or key)==wanted then record=value;break end end
-            end
-            if not record then
-                for key,value in pairs(snapshot.Records) do
-                    if value and (value.State==States.Slot or value.State==States.Dropped) and value.CarrierUserId==nil and typeof(value.BottomCFrame)=='CFrame' then record=value;break end
-                end
-            end
-            if not record or not record.Uid or typeof(record.BottomCFrame)~='CFrame' then return end
-            if (record.State~=States.Slot and record.State~=States.Dropped) or record.CarrierUserId~=nil then return end
-            local uid=tostring(record.Uid)
-            if autoStealLastUid==uid then return end
-            local eggModel=workspace:FindFirstChild('AreaEggSlotsClient')
-            eggModel=eggModel and eggModel:FindFirstChild(uid)
-            local pickupPos=record.BottomCFrame.Position
-            if eggModel then
-                local hitbox=eggModel:FindFirstChild('Hitbox',true) or eggModel:FindFirstChild('SmartPromptPart',true)
-                if hitbox and hitbox:IsA('BasePart') then pickupPos=hitbox.Position end
-            end
-            -- Step 1 only: walk to the selected egg at the Humanoid's normal WalkSpeed.
-            -- Do not set CFrame or PivotTo, which would move the character instantly.
-            local targetPosition=pickupPos+Vector3.new(0,2.5,0)
-            humanoid.Sit=false
-            humanoid.PlatformStand=false
-            root.AssemblyLinearVelocity=Vector3.zero
-            root.AssemblyAngularVelocity=Vector3.zero
-            local targetXZ=Vector3.new(targetPosition.X,0,targetPosition.Z)
-            local startXZ=Vector3.new(root.Position.X,0,root.Position.Z)
-            local distance=(targetXZ-startXZ).Magnitude
-            local walkSpeed=math.max(tonumber(humanoid.WalkSpeed) or 16,1)
-            local timeout=math.max(distance/walkSpeed+12,15)
-            local startedAt=os.clock()
-            local lastMoveCommand=0
-            humanoid:MoveTo(targetPosition)
-            while humanoid.Health>0 do
-                local currentXZ=Vector3.new(root.Position.X,0,root.Position.Z)
-                if (targetXZ-currentXZ).Magnitude<=3 then break end
-                if os.clock()-startedAt>timeout then
-                    error('Auto Steal walking to egg timed out')
-                end
-                if os.clock()-lastMoveCommand>=6 then
-                    humanoid:MoveTo(targetPosition)
-                    lastMoveCommand=os.clock()
-                end
-                game:GetService('RunService').Heartbeat:Wait()
-            end
-            if humanoid.Health<=0 then
-                error('Character died while walking to egg')
-            end
-            autoStealLastUid=uid
-        end)
-        if not ok then warn('[UNKNOWN Auto Steal] '..tostring(err)) end
-        autoStealBusy=false
-    end
-    task.spawn(function()
-        while alive do
+    while alive do
             if autoStealEnabled and not autoStealBusy then autoStealAttempt() end
             task.wait(0.25)
         end
