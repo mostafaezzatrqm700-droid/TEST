@@ -1036,7 +1036,7 @@ local function createFinder(D)
                 body.ZIndex=83
                 body.TextWrapped=true
                 body.TextYAlignment=Enum.TextYAlignment.Top
-                local fullError='['..item.time..'] '..item.source..' / '..item.stage..'\\n'..item.message
+                local fullError='['..item.time..'] '..item.source..' / '..item.stage..'\n'..item.message
                 copyErrorButton.Activated:Connect(function()
                     local copied=false
                     pcall(function()
