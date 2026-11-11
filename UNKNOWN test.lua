@@ -1,8 +1,10 @@
 -- UNKNOWN | Direct launch; key verification disabled.
  -- UNKNOWN visible error reporter
 local errorGui, errorText
+local latestErrorDetails = ""
 local function showUnknownError(message, trace)
     local details = tostring(message or "Unknown error")
+    latestErrorDetails = details
     if trace and tostring(trace) ~= "" then
         details = details .. "\\n\\n" .. tostring(trace)
     end
@@ -83,10 +85,44 @@ local function showUnknownError(message, trace)
             hint.TextXAlignment = Enum.TextXAlignment.Left
             hint.Parent = panel
 
+            local copyButton = Instance.new("TextButton")
+            copyButton.Name = "CopyError"
+            copyButton.AnchorPoint = Vector2.new(0, 1)
+            copyButton.Position = UDim2.new(1, -12, 1, -12)
+            copyButton.Size = UDim2.fromOffset(112, 34)
+            copyButton.BackgroundColor3 = Color3.fromRGB(55, 105, 75)
+            copyButton.BorderSizePixel = 0
+            copyButton.Font = Enum.Font.GothamBold
+            copyButton.Text = "COPY ERROR"
+            copyButton.TextColor3 = Color3.new(1, 1, 1)
+            copyButton.TextSize = 12
+            copyButton.Parent = panel
+            local copyCorner = Instance.new("UICorner")
+            copyCorner.CornerRadius = UDim.new(0, 6)
+            copyCorner.Parent = copyButton
+            copyButton.Activated:Connect(function()
+                local copied = false
+                if type(setclipboard) == "function" then
+                    copied = pcall(setclipboard, latestErrorDetails)
+                elseif type(toclipboard) == "function" then
+                    copied = pcall(toclipboard, latestErrorDetails)
+                elseif type(to_clipboard) == "function" then
+                    copied = pcall(to_clipboard, latestErrorDetails)
+                end
+                copyButton.Text = copied and "COPIED!" or "COPY UNAVAILABLE"
+                copyButton.BackgroundColor3 = copied and Color3.fromRGB(35, 135, 80) or Color3.fromRGB(145, 55, 55)
+                task.delay(2, function()
+                    if copyButton and copyButton.Parent then
+                        copyButton.Text = "COPY ERROR"
+                        copyButton.BackgroundColor3 = Color3.fromRGB(55, 105, 75)
+                    end
+                end)
+            end)
+
             local scroll = Instance.new("ScrollingFrame")
             scroll.Name = "ErrorDetails"
             scroll.Position = UDim2.new(0, 12, 0, 70)
-            scroll.Size = UDim2.new(1, -24, 1, -82)
+            scroll.Size = UDim2.new(1, -24, 1, -128)
             scroll.BackgroundColor3 = Color3.fromRGB(8, 8, 11)
             scroll.BorderSizePixel = 0
             scroll.ScrollBarThickness = 5
@@ -111,6 +147,7 @@ local function showUnknownError(message, trace)
             errorText.TextYAlignment = Enum.TextYAlignment.Top
             errorText.Parent = scroll
         end
+        latestErrorDetails = details
         if errorText and errorText.Parent then
             errorText.Text = details
         end
