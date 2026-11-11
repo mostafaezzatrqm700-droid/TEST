@@ -3210,8 +3210,7 @@ local function run()
                                         path=candidate
                                         waypoints=candidateWaypoints
                                     end
-                                end
-                                else
+                                elseif candidate.Status~=Enum.PathStatus.Success then
                                     noPathResults=noPathResults+1
                                     lastPathStatus=tostring(candidate.Status)
                                 end
