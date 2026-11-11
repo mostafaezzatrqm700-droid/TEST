@@ -2565,8 +2565,11 @@ local function createFinder(D)
             local limit=10
             while #source>limit do source[#source]=nil end
             for i,e in ipairs(source) do e.displayRank=i end
+        -- Hide every egg from both Finder tabs during in-game night (18:00-06:00).
+        local gameClockTime=game:GetService('Lighting').ClockTime
+        local isNight=gameClockTime>=18 or gameClockTime<6
         for priorityRank,entry in ipairs(source) do
-            if type(entry)=='table' and type(entry.expiresAt)=='number' and now<entry.expiresAt and type(entry.rate)=='number' and type(entry.jobId)=='string' and D.publicEntryAllowed(entry,now) and (othersOnly or D.publicPriorityVisible(entry,priorityRank)) then
+            if not isNight and type(entry)=='table' and type(entry.expiresAt)=='number' and now<entry.expiresAt and type(entry.rate)=='number' and type(entry.jobId)=='string' and D.publicEntryAllowed(entry,now) and (othersOnly or D.publicPriorityVisible(entry,priorityRank)) then
                 local visible=table.clone(entry)
                 visible.displayRank=#entries+1
                 entries[#entries+1]=visible
