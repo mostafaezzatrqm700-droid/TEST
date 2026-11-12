@@ -997,9 +997,9 @@ local function createFinder(D)
                 local row=D.make('Frame',{Name='ServerEggRow',Size=UDim2.new(1,-8,0,62),BackgroundColor3=Color3.fromRGB(42,44,56),BorderSizePixel=0,LayoutOrder=count,ZIndex=102},serverEggsList)
                 table.insert(serverEggRows,row)
                 D.make('UICorner',{CornerRadius=UDim.new(0,5)},row)
-                local name=D.label(row,tostring(entry.name or 'Unknown Egg'),UDim2.fromOffset(9,5),UDim.new(1,-112,0,24),Color3.fromRGB(245,240,255),14)
+                local name=D.label(row,tostring(entry.name or 'Unknown Egg'),UDim2.fromOffset(9,5),UDim2.new(1,-112,0,24),Color3.fromRGB(245,240,255),14)
                 name.ZIndex=103
-                local detail=D.label(row,tostring(entry.rarity or 'Unknown')..' • '..tostring(entry.areaKey or 'Unknown area'),UDim2.fromOffset(9,31),UDim.new(1,-112,0,20),Color3.fromRGB(185,190,210),11)
+                local detail=D.label(row,tostring(entry.rarity or 'Unknown')..' • '..tostring(entry.areaKey or 'Unknown area'),UDim2.fromOffset(9,31),UDim2.new(1,-112,0,20),Color3.fromRGB(185,190,210),11)
                 detail.ZIndex=103
                 local steal=D.make('TextButton',{Name='StealButton',Text='STEAL',Position=UDim2.new(1,-94,0,13),Size=UDim2.fromOffset(82,36),BackgroundColor3=Color3.fromRGB(45,135,82),TextColor3=Color3.new(1,1,1),TextSize=13,ZIndex=104},row)
                 steal.Activated:Connect(function()
