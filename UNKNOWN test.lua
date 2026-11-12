@@ -3028,7 +3028,7 @@ local function run()
         if not remote or not remote:IsA('RemoteFunction') then return false,'RemoteFunction unavailable: '..path end
         local box={done=false}
         task.spawn(function()
-            local ok,result=pcall(function() return remote:InvokeServer(args) end)
+            local ok,result=pcall(function() if args==nil then return remote:InvokeServer() end;return remote:InvokeServer(args) end)
             box.done=true;box.ok=ok;box.result=result
         end)
         local started=os.clock()
@@ -3104,7 +3104,7 @@ local function run()
         task.wait(0.2)
         local ok,result=invokeGameRemote('RF/EggWorld/AskFieldEggCarry',{Uid=entry.uid},7)
         if not ok then ok,result=invokeGameRemote('Eggs: RequestAreaEggCarry',{Uid=entry.uid},7) end
-        if not ok or result~=true then return finish(false,'The game did not accept the carry request: '..tostring(result)) end
+        if not ok or not result then return finish(false,'The game did not accept the carry request: '..tostring(result)) end
         if notify then notify('Egg picked up. Returning to your base...') end
         local petArea=findOwnPetArea()
         if not petArea then return finish(false,'Egg carry accepted, but your base PetArea could not be located. Return to your base manually.') end
