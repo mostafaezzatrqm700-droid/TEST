@@ -664,6 +664,7 @@ local function createFinder(D)
     local currentJoinSource='JOIN'
     local joinAttemptSerial=0
     local joinedEggSettingKey='UNKNOWNJoinedEggV1'
+    local takenEggNightCleanupDone=false
     local joinedEgg
     pcall(function()
         local saved=Teleports:GetTeleportSetting(joinedEggSettingKey)
@@ -682,6 +683,7 @@ local function createFinder(D)
             source=tostring(entry.source or 'field')
         }
         joinedEgg=saved
+        takenEggNightCleanupDone=false
         pcall(function() Teleports:SetTeleportSetting(joinedEggSettingKey,saved) end)
     end
     D.joinedEgg=joinedEgg
@@ -2905,17 +2907,14 @@ local function createFinder(D)
             task.wait(0.1)
         end
     end)
-    local takenEggNightCleanupDone=false
     task.spawn(function()
         while active do
             local gameClockTime=game:GetService('Lighting').ClockTime
             local isNight=gameClockTime>=18 or gameClockTime<6
-            if not isNight then
-                takenEggNightCleanupDone=false
-            elseif not takenEggNightCleanupDone then
+            if isNight and not takenEggNightCleanupDone then
                 local tracked=D.joinedEgg
                 if type(tracked)=='table' and type(tracked.takenAt)=='number' then
-                    -- Remove the joined egg's TAKEN card once per night, then leave it alone.
+                    -- Permanently remove this joined egg's TAKEN card at nightfall.
                     takenEggNightCleanupDone=true
                     joinedEgg=nil
                     D.joinedEgg=nil
