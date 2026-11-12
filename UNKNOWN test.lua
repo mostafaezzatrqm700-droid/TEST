@@ -166,6 +166,25 @@ pcall(function()
     end)
 end)
 
+-- Additional Delta/Roblox output capture: show runtime errors even when
+-- they are emitted through the client log instead of ScriptContext.Error.
+local unknownLogConnection
+pcall(function()
+    unknownLogConnection = game:GetService("LogService").MessageOut:Connect(function(message, messageType)
+        if messageType == Enum.MessageType.MessageError then
+            local env = _G
+            pcall(function()
+                if type(getgenv) == "function" then env = getgenv() end
+            end)
+            if type(env) == "table" then
+                env.__UNKNOWN_LAST_ERROR = tostring(message)
+            end
+            showUnknownError(message, "Captured from LogService.MessageOut")
+        end
+    end)
+end)
+
+
 
 local function startUnknown()
 -- Auto Execute: register the next-server launch once, and retry silently if registration fails.
