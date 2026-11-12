@@ -2442,10 +2442,10 @@ local function createFinder(D)
         end)
     end
 
-    local retainedLocal={}
-    local retiredLocal={}
-    local render
-    local rendering,renderPending,renderQueued=false,false,false
+    top5State.retainedLocal={}
+    top5State.retiredLocal={}
+    top5State.render=nil
+    top5State.rendering,top5State.renderPending,top5State.renderQueued=false,false,false
     sharedRuntime.__UNKNOWN_RENDER_ONCE=function()
         local passEpoch,passScope=queryEpoch,othersOnly
         local batchStarted=os.clock()
@@ -2456,7 +2456,7 @@ local function createFinder(D)
             batchStarted=os.clock()
             if not active then return false end
             if queryEpoch~=passEpoch or othersOnly~=passScope or (os.clock()+clockOffset)*1000>=passDeadline then
-                renderPending=true
+                top5State.renderPending=true
                 return false
             end
             return true
@@ -2523,10 +2523,10 @@ local function createFinder(D)
             end
             if D.gui then pcall(function() D.gui:SetAttribute('TenshiLocalScanCount',#live);D.gui:SetAttribute('TenshiLocalVisibleCount',#source) end) end
         else
-        for key,e in pairs(retainedLocal) do
-            if e.expiresAt<=now then retainedLocal[key]=nil;retiredLocal[key]=now+600000 end
+        for key,e in pairs(top5State.retainedLocal) do
+            if e.expiresAt<=now then top5State.retainedLocal[key]=nil;top5State.retiredLocal[key]=now+600000 end
         end
-        for key,expiry in pairs(retiredLocal) do if expiry<=now then retiredLocal[key]=nil end end
+        for key,expiry in pairs(top5State.retiredLocal) do if expiry<=now then top5State.retiredLocal[key]=nil end end
         if not othersOnly then
             for _,e in ipairs(feed) do
                 if not isHalloweenEgg(e) and (e.jobId~=game.JobId or e.unavailable) and (e.rate or 0)>=minRate and (e.rank or 0)>=minRank and type(e.expiresAt)=='number' and e.expiresAt>now then source[#source+1]=e;seen[e.key]=true end
@@ -2539,7 +2539,7 @@ local function createFinder(D)
                 states[state.uid]=state.state
                 fieldStateByUid[tostring(state.uid)]=state.state
             end
-            for key,e in pairs(retainedLocal) do
+            for key,e in pairs(top5State.retainedLocal) do
                 if not isHalloweenEgg(e) and (not states[e.uid] or states[e.uid]=='Claimed' or states[e.uid]=='Carried') then
                     e.unavailable=true;e.full=true;e.takenConfirmed=true
                     stateByKey[key]=e
@@ -2553,14 +2553,14 @@ local function createFinder(D)
                     local key=game.PlaceId..':'..game.JobId..':'..tostring(e.uid or e.key)
                     local state=not othersOnly and stateByKey[key] or nil
                     if state and state.unavailable and top5State.cache[key] then top5State.cache[key].unavailable=true;top5State.cache[key].full=true end
-                    if not seen[key] and not retiredLocal[key] and not (state and state.unavailable) then
+                    if not seen[key] and not top5State.retiredLocal[key] and not (state and state.unavailable) then
                         seen[key]=true
                         local localState=fieldStateByUid[tostring(e.uid or e.key)]
                     local taken=localState=='Carried' or localState=='Claimed'
                     source[#source+1]={key=key,uid=tostring(e.uid or e.key),name=e.name,rate=e.rate or 0,missingRate=e.rate==nil,scale=e.scale,weight=e.weight,icon=e.icon,rarity=e.rarity,mutations=e.mutationText,traitsKnown=e.traitsKnown~=false,area=e.areaKey or e.area,model=e.model,isLocal=true,localTier=e.tier,full=taken or (not othersOnly and state and state.full or false),unavailable=taken,takenConfirmed=taken,source=e.isEvent and 'event' or 'field',estimated=e.estimated or e.unmutatedRate~=nil,placeId=game.PlaceId,jobId=game.JobId,expiresAt=now+5000,seenAt=0,spawnedAt=not e.isEvent and localCycle and localCycle.respawnAt or nil,spawnTimeKnown=not e.isEvent and localCycle~=nil and type(localCycle.respawnAt)=='number'}
                         if metadata and metadata.resetAt and not e.isEvent then
                             local saved=table.clone(source[#source]);saved.expiresAt=now+metadata.resetAt-gameNow-2000;saved.localTier=e.tier
-                            retainedLocal[key]=saved
+                            top5State.retainedLocal[key]=saved
                         end
                     end
                 end
@@ -2803,7 +2803,7 @@ local function createFinder(D)
                     joining=false;joiningKey=nil;updateCard(card,entry,card.row.LayoutOrder or 1);return
                 end
                 if (os.clock()+clockOffset)*1000>=entry.expiresAt then
-                    joining=false;joiningKey=nil;feedAt=-math.huge;render();return
+                    joining=false;joiningKey=nil;feedAt=-math.huge;top5State.render();return
                 end
                 if not config then
                     recordJoinError('JOIN','CONNECTION','Finder is not connected.')
@@ -2813,14 +2813,14 @@ local function createFinder(D)
                 if claim and claim.allowed~=true and (claim.unavailable or claim.full) then
                     recordJoinError('JOIN','RESERVATION',claim.error or (claim.full and 'The target server is full.' or 'The egg is no longer available.'))
                     joining=false;joiningKey=nil;joinAttemptSerial+=1;entry.full=true;entry.unavailable=claim.unavailable==true;entry.takenConfirmed=claim.takenConfirmed==true;lastRender=nil
-                    queryStatus='Egg no longer available';render();return
+                    queryStatus='Egg no longer available';top5State.render();return
                 end
                 if not claim or claim.allowed~=true then
                     recordJoinError('JOIN','RESERVATION',claim and (claim.error or 'Reservation was denied.') or claimError or 'Reservation request failed.')
                     joining=false;joiningKey=nil;joinAttemptSerial+=1;feedAt=-math.huge
                     if claim and not claim.retryable then
                         for _,item in ipairs(feed) do if item.jobId==entry.jobId then item.full=true end end
-                        render()
+                        top5State.render()
                     end
                     queryStatus=claim and (claim.error or 'Server reserved; choose another') or ('Join reservation failed: '..tostring(claimError))
                     return
@@ -2833,7 +2833,7 @@ local function createFinder(D)
                 local joinExpiry=math.min(entry.expiresAt,tonumber(claim.expiresAt) or entry.expiresAt)
                 if (os.clock()+clockOffset)*1000>=joinExpiry then
                     recordJoinError('JOIN','EXPIRED','The server report expired before teleport could begin.')
-                    joining=false;joiningKey=nil;joinAttemptSerial+=1;feedAt=-math.huge;entry.expiresAt=joinExpiry;render()
+                    joining=false;joiningKey=nil;joinAttemptSerial+=1;feedAt=-math.huge;entry.expiresAt=joinExpiry;top5State.render()
                     queryStatus='Reset reached; refreshing';return
                 end
                 queueAutoExecute()
@@ -2866,15 +2866,15 @@ local function createFinder(D)
         list.CanvasPosition=savedScroll
         list.Visible=true
     end
-    render=function()
+    top5State.render=function()
         if not active then return end
-        if rendering then renderPending=true;return end
-        rendering=true
+        if top5State.rendering then top5State.renderPending=true;return end
+        top5State.rendering=true
         local ok,err=pcall(sharedRuntime.__UNKNOWN_RENDER_ONCE)
-        rendering=false
-        if renderPending then renderPending=false;if not renderQueued and active then
-            renderQueued=true
-            task.defer(function() renderQueued=false;if active then render() end end)
+        top5State.rendering=false
+        if top5State.renderPending then top5State.renderPending=false;if not top5State.renderQueued and active then
+            top5State.renderQueued=true
+            task.defer(function() top5State.renderQueued=false;if active then top5State.render() end end)
         end end
         if not ok then list.Visible=true;error(err) end
     end
@@ -2882,9 +2882,9 @@ local function createFinder(D)
         -- Hide old-tab rows immediately; never expose remote JOINs as MY SERVER.
         list.Visible=false
         list.CanvasPosition=Vector2.new(0,0)
-        if not renderQueued and active then
-            renderQueued=true
-            task.defer(function() renderQueued=false;if active then render() end end)
+        if not top5State.renderQueued and active then
+            top5State.renderQueued=true
+            task.defer(function() top5State.renderQueued=false;if active then top5State.render() end end)
         end
     end
     installFinderButtonMotion(D,panel,Input,function() return active end)
@@ -2941,7 +2941,7 @@ local function createFinder(D)
                 end
             end
             joiningKey=nil
-            render()
+            top5State.render()
         end
     end)
     D.gui.Destroying:Connect(function() active=false;if localHighlight then localHighlight:Destroy() end end)
@@ -3010,7 +3010,7 @@ local function createFinder(D)
                 resetTimer.TextColor3=Color3.fromRGB(230,245,255)
             end
             sharingNotice.Visible=false
-            local ok=pcall(render)
+            local ok=pcall(top5State.render)
             if not ok then queryStatus='Unable to display finder feed' end
             task.wait(0.1)
         end
