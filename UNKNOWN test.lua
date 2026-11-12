@@ -2416,6 +2416,7 @@ local function createFinder(D)
             card.buttonText=text;card.buttonEnabled=enabled
         end
     end
+    -- Top5 cache state grouped to reduce outer-scope local register pressure.
     local top5State={
         cache={},
         pendingCache=nil,
