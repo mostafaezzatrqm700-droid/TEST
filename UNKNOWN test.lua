@@ -947,12 +947,68 @@ local function createFinder(D)
     discordSubtitle.TextScaled=true;discordSubtitle.TextWrapped=false;discordSubtitle.Visible=true
     D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=11},discordSubtitle)
     local page={Text=''}
-    local scope=D.make('TextButton',{Name='AllServers',Text='ALL SERVERS',Position=UDim2.new(0,10,1,-176),Size=UDim2.new(0.5,-15,0,34),BackgroundColor3=Color3.fromRGB(67,70,80),TextColor3=Color3.new(1,1,1),TextSize=14},panel)
-    local myScope=D.make('TextButton',{Name='MyServer',Text='MY SERVER',Position=UDim2.new(0.5,5,1,-176),Size=UDim2.new(0.5,-15,0,34),BackgroundColor3=Color3.fromRGB(67,70,80),TextColor3=Color3.new(1,1,1),TextSize=14},panel)
-    for _,button in ipairs({scope,myScope}) do
+    local scope=D.make('TextButton',{Name='AllServers',Text='ALL SERVERS',Position=UDim2.new(0,10,1,-176),Size=UDim2.new(0.34,-12,0,34),BackgroundColor3=Color3.fromRGB(67,70,80),TextColor3=Color3.new(1,1,1),TextSize=13},panel)
+    local myScope=D.make('TextButton',{Name='MyServer',Text='MY SERVER',Position=UDim2.new(0.34,2,1,-176),Size=UDim2.new(0.33,-8,0,34),BackgroundColor3=Color3.fromRGB(67,70,80),TextColor3=Color3.new(1,1,1),TextSize=13},panel)
+    local serverEggsButton=D.make('TextButton',{Name='ServerEggsButton',Text='SERVER EGGS',Position=UDim2.new(0.67,4,1,-176),Size=UDim2.new(0.33,-14,0,34),BackgroundColor3=Color3.fromRGB(95,65,145),TextColor3=Color3.new(1,1,1),TextSize=13},panel)
+    for _,button in ipairs({scope,myScope,serverEggsButton}) do
         button.TextScaled=true;button.TextWrapped=false
         D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=14},button)
     end
+    local serverEggsOverlay=D.make('Frame',{Name='ServerEggsOverlay',Position=UDim2.fromScale(0.035,0.105),Size=UDim2.fromScale(0.93,0.79),BackgroundColor3=Color3.fromRGB(12,14,20),BorderSizePixel=0,Visible=false,ZIndex=100},panel)
+    D.make('UICorner',{CornerRadius=UDim.new(0,8)},serverEggsOverlay)
+    D.make('UIStroke',{Color=Color3.fromRGB(125,95,185),Thickness=2},serverEggsOverlay)
+    local serverEggsTitle=D.label(serverEggsOverlay,'SERVER EGGS • CURRENT SERVER',UDim2.fromOffset(12,8),UDim2.new(1,-116,0,28),Color3.fromRGB(245,235,255),16)
+    serverEggsTitle.ZIndex=101
+    local serverEggsClose=D.make('TextButton',{Name='CloseServerEggs',Text='X',Position=UDim2.new(1,-42,0,7),Size=UDim2.fromOffset(30,28),BackgroundColor3=Color3.fromRGB(145,48,58),TextColor3=Color3.new(1,1,1),TextSize=13,ZIndex=102},serverEggsOverlay)
+    local serverEggsRefresh=D.make('TextButton',{Name='RefreshServerEggs',Text='REFRESH',Position=UDim2.new(1,-105,0,7),Size=UDim2.fromOffset(58,28),BackgroundColor3=Color3.fromRGB(55,95,145),TextColor3=Color3.new(1,1,1),TextSize=10,ZIndex=102},serverEggsOverlay)
+    local serverEggsStatus=D.label(serverEggsOverlay,'Scanning this server...',UDim2.new(0,12,0,40),UDim2.new(1,-24,0,24),Color3.fromRGB(195,205,225),12)
+    serverEggsStatus.ZIndex=101
+    local serverEggsList=D.make('ScrollingFrame',{Name='ServerEggsList',Position=UDim2.new(0,10,0,68),Size=UDim2.new(1,-20,1,-78),BackgroundColor3=Color3.fromRGB(20,22,30),BorderSizePixel=0,ScrollBarThickness=5,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ZIndex=101},serverEggsOverlay)
+    D.make('UICorner',{CornerRadius=UDim.new(0,5)},serverEggsList)
+    local serverEggsLayout=D.make('UIListLayout',{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder},serverEggsList)
+    local serverEggRows={}
+    local function refreshServerEggs()
+        for _,row in ipairs(serverEggRows) do if row and row.Parent then row:Destroy() end end
+        table.clear(serverEggRows)
+        local entries=type(D.serverEggEntries)=='function' and D.serverEggEntries() or {}
+        local count=0
+        for _,entry in ipairs(entries) do
+            if entry and entry.uid and typeof(entry.bottomCFrame)=='CFrame' and entry.fieldState==D.slotState then
+                count+=1
+                local row=D.make('Frame',{Name='ServerEggRow',Size=UDim2.new(1,-8,0,62),BackgroundColor3=Color3.fromRGB(42,44,56),BorderSizePixel=0,LayoutOrder=count,ZIndex=102},serverEggsList)
+                table.insert(serverEggRows,row)
+                D.make('UICorner',{CornerRadius=UDim.new(0,5)},row)
+                local name=D.label(row,tostring(entry.name or 'Unknown Egg'),UDim2.fromOffset(9,5),UDim.new(1,-112,0,24),Color3.fromRGB(245,240,255),14)
+                name.ZIndex=103
+                local detail=D.label(row,tostring(entry.rarity or 'Unknown')..' • '..tostring(entry.areaKey or 'Unknown area'),UDim2.fromOffset(9,31),UDim.new(1,-112,0,20),Color3.fromRGB(185,190,210),11)
+                detail.ZIndex=103
+                local steal=D.make('TextButton',{Name='StealButton',Text='STEAL',Position=UDim2.new(1,-94,0,13),Size=UDim2.fromOffset(82,36),BackgroundColor3=Color3.fromRGB(45,135,82),TextColor3=Color3.new(1,1,1),TextSize=13,ZIndex=104},row)
+                steal.Activated:Connect(function()
+                    if type(D.stealEgg)~='function' then serverEggsStatus.Text='Steal is not ready.';return end
+                    steal.Active=false;steal.Text='WORKING...';serverEggsStatus.Text='Moving to '..tostring(entry.name)..'...'
+                    task.spawn(function()
+                        local ok,msg=pcall(D.stealEgg,entry,function(text) if serverEggsStatus.Parent then serverEggsStatus.Text=tostring(text) end end)
+                        if serverEggsStatus.Parent then serverEggsStatus.Text=ok and tostring(msg or 'Steal attempt finished.') or ('STEAL ERROR: '..tostring(msg)) end
+                        if steal.Parent then steal.Active=true;steal.Text='STEAL' end
+                        task.wait(0.5);if serverEggsOverlay.Visible then refreshServerEggs() end
+                    end)
+                end)
+            end
+        end
+        serverEggsStatus.Text=count>0 and ('Found '..count..' available egg(s) in this server.') or 'No available eggs found in this server.'
+    end
+    serverEggsButton.Activated:Connect(function()
+        serverEggsOverlay.Visible=true
+        refreshServerEggs()
+    end)
+    serverEggsClose.Activated:Connect(function() serverEggsOverlay.Visible=false end)
+    serverEggsRefresh.Activated:Connect(refreshServerEggs)
+    task.spawn(function()
+        while D.gui.Parent do
+            if serverEggsOverlay.Visible then refreshServerEggs() end
+            task.wait(2)
+        end
+    end)
     local function styleScope()
         scope.BackgroundColor3=othersOnly and Color3.fromRGB(67,70,80) or Color3.fromRGB(45,130,75)
         myScope.BackgroundColor3=othersOnly and Color3.fromRGB(45,130,75) or Color3.fromRGB(67,70,80)
@@ -2962,7 +3018,114 @@ local function run()
         return valid(value) and value or nil
     end
     local lastScan=0
-    createFinder({gui=gui,localPanel={Visible=false},player=player,make=make,label=label,entries=function() return os.clock()-lastScan<10 and latestEntries or {} end,metadata=function() return latestMetadata end,ready=function() return lastScan>0 and os.clock()-lastScan<10 end,parseValue=parseValue,money=money,stopFarm=function() end,stopScript=function() alive=false; if errorConnection then pcall(function() errorConnection:Disconnect() end);errorConnection=nil end; if errorGui and errorGui.Parent then pcall(function() errorGui:Destroy() end) end; if gui and gui.Parent then pcall(function() gui:Destroy() end) end end})
+    local stealBusy=false
+    local function getGameRemote(path)
+        local root=RS:FindFirstChild('Packages') and RS.Packages:FindFirstChild('Networking') or RS:FindFirstChild('Network')
+        return root and root:FindFirstChild(path)
+    end
+    local function invokeGameRemote(path,args,timeout)
+        local remote=getGameRemote(path)
+        if not remote or not remote:IsA('RemoteFunction') then return false,'RemoteFunction unavailable: '..path end
+        local box={done=false}
+        task.spawn(function()
+            local ok,result=pcall(function() return remote:InvokeServer(args) end)
+            box.done=true;box.ok=ok;box.result=result
+        end)
+        local started=os.clock()
+        while not box.done and os.clock()-started<(timeout or 8) do task.wait(0.05) end
+        if not box.done then return false,'Request timed out' end
+        if not box.ok then return false,tostring(box.result) end
+        return true,box.result
+    end
+    local function walkToPoint(target)
+        local character=player.Character
+        local humanoid=character and character:FindFirstChildOfClass('Humanoid')
+        local root=character and character:FindFirstChild('HumanoidRootPart')
+        if not humanoid or not root or humanoid.Health<=0 then return false,'Character unavailable' end
+        local path
+        local ok=pcall(function()
+            path=game:GetService('PathfindingService'):CreatePath({AgentCanJump=true,WaypointSpacing=5})
+            path:ComputeAsync(root.Position,target)
+        end)
+        local points={}
+        if ok and path and path.Status==Enum.PathStatus.Success then
+            for _,waypoint in ipairs(path:GetWaypoints()) do points[#points+1]=waypoint end
+        else
+            points={{Position=target,Action=Enum.PathWaypointAction.Walk}}
+        end
+        for _,waypoint in ipairs(points) do
+            if not alive or humanoid.Health<=0 then return false,'Movement cancelled' end
+            if waypoint.Action==Enum.PathWaypointAction.Jump then humanoid.Jump=true end
+            humanoid:MoveTo(waypoint.Position)
+            local deadline=os.clock()+math.clamp((root.Position-waypoint.Position).Magnitude/ math.max(humanoid.WalkSpeed,8)*2+3,4,18)
+            while alive and humanoid.Health>0 and (root.Position-waypoint.Position).Magnitude>4 and os.clock()<deadline do task.wait(0.12) end
+            if (root.Position-waypoint.Position).Magnitude>6 then return false,'Could not reach destination' end
+        end
+        return true
+    end
+    local function findOwnPetArea()
+        local plots=workspace:FindFirstChild('Plots')
+        if not plots then return nil end
+        local ok,state=invokeGameRemote('RF/Homestead/AskState',nil,6)
+        if not ok then ok,state=invokeGameRemote('Plots: RequestState',nil,6) end
+        if ok and type(state)=='table' and type(state.OwnersBySlot)=='table' then
+            for slot,owner in pairs(state.OwnersBySlot) do
+                if tonumber(owner)==player.UserId or owner==player.UserId then
+                    local plot=plots:FindFirstChild(tostring(slot))
+                    local update=plot and plot:FindFirstChild('ToUpdate')
+                    local petArea=update and update:FindFirstChild('PetArea')
+                    if petArea and petArea:IsA('BasePart') then return petArea end
+                end
+            end
+        end
+        for _,plot in ipairs(plots:GetChildren()) do
+            local sign=plot:FindFirstChild('PlotSign')
+            if sign then
+                for _,obj in ipairs(sign:GetDescendants()) do
+                    if obj:IsA('TextLabel') and obj.Text==player.Name then
+                        local update=plot:FindFirstChild('ToUpdate')
+                        local petArea=update and update:FindFirstChild('PetArea')
+                        if petArea and petArea:IsA('BasePart') then return petArea end
+                    end
+                end
+            end
+        end
+        return nil
+    end
+    local function stealEgg(entry,notify)
+        if stealBusy then return false,'Another steal is already running.' end
+        stealBusy=true
+        local function finish(ok,msg) stealBusy=false;if notify then pcall(notify,msg) end;return ok,msg end
+        if type(entry)~='table' or entry.uid==nil or typeof(entry.bottomCFrame)~='CFrame' or entry.fieldState~=States.Slot then return finish(false,'This egg is no longer available.') end
+        local eggPosition=entry.bottomCFrame.Position
+        if notify then notify('Walking to '..tostring(entry.name)..'...') end
+        local moved,moveError=walkToPoint(eggPosition+Vector3.new(0,3,0))
+        if not moved then return finish(false,moveError) end
+        task.wait(0.2)
+        local ok,result=invokeGameRemote('RF/EggWorld/AskFieldEggCarry',{Uid=entry.uid},7)
+        if not ok then ok,result=invokeGameRemote('Eggs: RequestAreaEggCarry',{Uid=entry.uid},7) end
+        if not ok or result~=true then return finish(false,'The game did not accept the carry request: '..tostring(result)) end
+        if notify then notify('Egg picked up. Returning to your base...') end
+        local petArea=findOwnPetArea()
+        if not petArea then return finish(false,'Egg carry accepted, but your base PetArea could not be located. Return to your base manually.') end
+        local homeOk,homeError=walkToPoint(petArea.Position+Vector3.new(0,4,0))
+        if not homeOk then return finish(false,'Egg picked up, but could not reach your base: '..tostring(homeError)) end
+        local deposited=false
+        local deadline=os.clock()+12
+        while alive and os.clock()<deadline do
+            local snapshotOk,snapshot=pcall(function() return EggState.ReadFieldEggs() end)
+            local stillThere=false
+            if snapshotOk and type(snapshot)=='table' and type(snapshot.Records)=='table' then
+                for key,record in pairs(snapshot.Records) do
+                    if tostring(record.Uid or key)==tostring(entry.uid) and record.State==States.Carried then stillThere=true;break end
+                end
+                if not stillThere then deposited=true;break end
+            end
+            task.wait(0.4)
+        end
+        return finish(true,deposited and ('Successfully returned '..tostring(entry.name)..' to your base.') or 'Reached your base with the egg; the game may still be processing the deposit.')
+    end
+    createFinder({gui=gui,localPanel={Visible=false},player=player,make=make,label=label,entries=function() return os.clock()-lastScan<10 and latestEntries or {} end,serverEggEntries=function() return os.clock()-lastScan<10 and latestEntries or {} end,slotState=States.Slot,stealEgg=stealEgg,metadata=function() return latestMetadata end,ready=function() return lastScan>0 and os.clock()-lastScan<10 end,parseValue=parseValue,money=money,stopFarm=function() end,stopScript=function() alive=false; if errorConnection then pcall(function() errorConnection:Disconnect() end);errorConnection=nil end; if errorGui and errorGui.Parent then pcall(function() errorGui:Destroy() end) end; if gui and gui.Parent then pcall(function() gui:Destroy() end) end end})
     gui:SetAttribute("UNKNOWN_READY", true)
     local notified={}
     while alive do
@@ -2998,7 +3161,7 @@ local function run()
                     fieldCount=fieldCount+1
                     seen[tostring(uid)]=true
                     local traits,traitsKnown=readTraitNames(record)
-                    table.insert(eggs,{key='field:'..tostring(uid),uid=uid,traitsKnown=traitsKnown,category=record.AssetCategory,areaKey=record.AreaId,worldPos=typeof(record.BottomCFrame)=='CFrame' and record.BottomCFrame.Position or nil,area=tostring(record.AreaId)..' | Mut: '..(#traits>0 and table.concat(traits,', ') or traitsKnown and 'None' or 'UNKNOWN'),model=model,icon=asset.Icon,name=asset.DisplayName or record.AssetCategory or 'Unknown',rarity=rarity.DisplayName or rarity._id or 'Unknown',tier=tonumber(rarity.Rank) or 0,color=typeof(rarity.Color)=='Color3' and rarity.Color or Color3.new(1,1,1),scale=scale,weight=weight,rate=rate,estimated=estimated})
+                    table.insert(eggs,{key='field:'..tostring(uid),uid=uid,fieldState=record.State,bottomCFrame=record.BottomCFrame,traitsKnown=traitsKnown,category=record.AssetCategory,areaKey=record.AreaId,worldPos=typeof(record.BottomCFrame)=='CFrame' and record.BottomCFrame.Position or nil,area=tostring(record.AreaId)..' | Mut: '..(#traits>0 and table.concat(traits,', ') or traitsKnown and 'None' or 'UNKNOWN'),model=model,icon=asset.Icon,name=asset.DisplayName or record.AssetCategory or 'Unknown',rarity=rarity.DisplayName or rarity._id or 'Unknown',tier=tonumber(rarity.Rank) or 0,color=typeof(rarity.Color)=='Color3' and rarity.Color or Color3.new(1,1,1),scale=scale,weight=weight,rate=rate,estimated=estimated})
                 end
             end
             -- One numeric value drives both display and ordering.
