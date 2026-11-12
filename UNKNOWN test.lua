@@ -2416,26 +2416,28 @@ local function createFinder(D)
             card.buttonText=text;card.buttonEnabled=enabled
         end
     end
-    local top5Cache={}
-    local top5PendingCache
-    local top5Retired={}
-    local top5CacheFile='tenshi_beta_top5_cycle_v2.json'
-    local top5Saved=''
-    local top5WriteAt=-math.huge
+    local top5State={
+        cache={},
+        pendingCache=nil,
+        retired={},
+        cacheFile='tenshi_beta_top5_cycle_v2.json',
+        saved='',
+        writeAt=-math.huge
+    }
     if type(readfile)=='function' then
         pcall(function()
-            local saved=Http:JSONDecode(readfile(top5CacheFile))
+            local saved=Http:JSONDecode(readfile(top5State.cacheFile))
             if saved.version==1 and type(saved.items)=='table' and type(saved.retired)=='table' then
-                top5PendingCache=saved
+                top5State.pendingCache=saved
             end
         end)
     end
     local function saveTop5Cache()
-        if type(writefile)~='function' or os.clock()-top5WriteAt<1 then return end
-        top5WriteAt=os.clock()
+        if type(writefile)~='function' or os.clock()-top5State.writeAt<1 then return end
+        top5State.writeAt=os.clock()
         pcall(function()
-            local bytes=Http:JSONEncode({version=1,items=top5Cache,retired=top5Retired})
-            if bytes~=top5Saved then writefile(top5CacheFile,bytes);top5Saved=bytes end
+            local bytes=Http:JSONEncode({version=1,items=top5State.cache,retired=top5State.retired})
+            if bytes~=top5State.saved then writefile(top5State.cacheFile,bytes);top5State.saved=bytes end
         end)
     end
 
@@ -2549,7 +2551,7 @@ local function createFinder(D)
                 if (e.rate or 0)>=minRate and (e.tier or 0)>=minRank then
                     local key=game.PlaceId..':'..game.JobId..':'..tostring(e.uid or e.key)
                     local state=not othersOnly and stateByKey[key] or nil
-                    if state and state.unavailable and top5Cache[key] then top5Cache[key].unavailable=true;top5Cache[key].full=true end
+                    if state and state.unavailable and top5State.cache[key] then top5State.cache[key].unavailable=true;top5State.cache[key].full=true end
                     if not seen[key] and not retiredLocal[key] and not (state and state.unavailable) then
                         seen[key]=true
                         local localState=fieldStateByUid[tostring(e.uid or e.key)]
@@ -2563,24 +2565,24 @@ local function createFinder(D)
                 end
             end
             local cycle=cycleInfo()
-            if top5PendingCache and feedAt>0 then
-                top5Cache=top5PendingCache.items;top5Retired=top5PendingCache.retired;top5PendingCache=nil
+            if top5State.pendingCache and feedAt>0 then
+                top5State.cache=top5State.pendingCache.items;top5State.retired=top5State.pendingCache.retired;top5State.pendingCache=nil
             end
             local cycleEnd=cycle and type(cycle.resetAt)=='number' and now+cycle.resetAt-gameNow-2000 or nil
             local cycleStart=cycleEnd and cycleEnd-298000 or nil
             -- Keep deadlines in the host clock across teleports. Never assign
             -- an old sighting to the next world just because it became FULL late.
-            for key,expiry in pairs(top5Retired) do if type(expiry)~='number' or expiry<=now then top5Retired[key]=nil end end
-            for key,saved in pairs(top5Cache) do
+            for key,expiry in pairs(top5State.retired) do if type(expiry)~='number' or expiry<=now then top5State.retired[key]=nil end end
+            for key,saved in pairs(top5State.cache) do
                 if type(saved)~='table' or type(saved.expiresAt)~='number' or saved.expiresAt<=now or saved.expiresAt>now+305000 then
-                    top5Cache[key]=nil;top5Retired[key]=now+600000
+                    top5State.cache[key]=nil;top5State.retired[key]=now+600000
                 end
             end
             local combined,live={},{}
             for _,e in ipairs(source) do
-                local old=top5Cache[e.key]
+                local old=top5State.cache[e.key]
                 local expiredLegacy=not e.retentionPinned and e.resetEstimated==true and cycleStart and type(e.seenAt)=='number' and e.seenAt>0 and e.seenAt<cycleStart
-                if not top5Retired[e.key] and not expiredLegacy then
+                if not top5State.retired[e.key] and not expiredLegacy then
                     if old and not e.retentionPinned and not othersOnly then
                         e.expiresAt=math.min(e.expiresAt>now and e.expiresAt or old.expiresAt,old.expiresAt)
                         -- A 90s feed TTL is not the retained card's reset deadline.
@@ -2589,12 +2591,12 @@ local function createFinder(D)
                     end
                     combined[#combined+1]=e;live[e.key]=true
                 elseif expiredLegacy then
-                    top5Cache[e.key]=nil;top5Retired[e.key]=now+600000
+                    top5State.cache[e.key]=nil;top5State.retired[e.key]=now+600000
                 end
             end
             if not othersOnly then
-                for key,saved in pairs(top5Cache) do
-                    if not live[key] and not top5Retired[key] and saved.expiresAt>now and (saved.rate or 0)>=minRate and (saved.rank or 0)>=minRank then
+                for key,saved in pairs(top5State.cache) do
+                    if not live[key] and not top5State.retired[key] and saved.expiresAt>now and (saved.rate or 0)>=minRate and (saved.rank or 0)>=minRank then
                         local e=table.clone(saved);e.full=true;e.isLocal=nil
                         combined[#combined+1]=e
                     end
@@ -2608,8 +2610,8 @@ local function createFinder(D)
                 if rank<=5 or not full then
                     if not (othersOnly and e.unavailable) then source[#source+1]=e end
                 end
-                if not othersOnly and rank<=5 and not top5Retired[e.key] then
-                    local previous=top5Cache[e.key]
+                if not othersOnly and rank<=5 and not top5State.retired[e.key] then
+                    local previous=top5State.cache[e.key]
                     local expiry=e.retentionPinned and e.expiresAt or previous and previous.expiresAt
                     if not expiry then
                         if e.isLocal and metadata and metadata.resetAt then expiry=now+metadata.resetAt-gameNow-2000
@@ -2621,16 +2623,16 @@ local function createFinder(D)
                         for _,name in ipairs({'key','uid','name','rate','scale','weight','icon','rarity','mutations','traitsKnown','area','source','estimated','placeId','jobId','seenAt','unavailable','resetEstimated','full','retentionPinned','takenConfirmed'}) do saved[name]=e[name] end
                         saved.rank=e.rank or (e.isLocal and e.localTier) or 0
                         saved.expiresAt=expiry;saved.resetEstimated=e.resetEstimated==true
-                        top5Cache[e.key]=saved;keep[e.key]=true
+                        top5State.cache[e.key]=saved;keep[e.key]=true
                         e.expiresAt=expiry
                     end
                 end
             end
             -- Filters and MY SERVER never erase the saved ALL SERVER cards.
             if not othersOnly and minRate==0 and minRank==0 then
-                for key in pairs(top5Cache) do if not keep[key] then top5Cache[key]=nil end end
+                for key in pairs(top5State.cache) do if not keep[key] then top5State.cache[key]=nil end end
             end
-            if not top5PendingCache then saveTop5Cache() end
+            if not top5State.pendingCache then saveTop5Cache() end
 
         end
             if not othersOnly then
